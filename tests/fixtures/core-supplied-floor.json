@@ -1,0 +1,26 @@
+{
+  "scope": "Frozen serial gradient-domain references with a supplied luminance floor.",
+  "seed": 3095,
+  "size": 512,
+  "rows": [
+    {
+      "variant": 1,
+      "expected_rgb_pixel_sha256": "86e1cb924a6a5127df17773d900e83ad3dc929d5c4335c25b1558321d319641a",
+      "source_pixel_sha256": "89cd181a02f2ff24ecc56ef551e2958a603e0096ab94e3e2189e9118e94d11a0",
+      "probe": "ramp_gray_horizontal"
+    },
+    {
+      "variant": 1,
+      "expected_rgb_pixel_sha256": "dcc5671435defbf1746b7efa22bb866f309a13cae7b15a3b67a8dea086f87e28",
+      "source_pixel_sha256": "4026639b7c18935b5c06d510eb167e02ab047e5b85734e357d7acae584fb4701",
+      "probe": "test_scene"
+    },
+    {
+      "variant": 2,
+      "expected_rgb_pixel_sha256": "d77b1960e9fa769ae84dd728ccad4a6844c3fd1e6204ac40307b3421f820f205",
+      "source_pixel_sha256": "b1b9892d241d4f872a0cc9c6f88063a7e09592686eee7ab8434a114e8bb2f9d4",
+      "probe": "color_patches"
+    }
+  ],
+  "reference_origin": "Externally measured reference values frozen for regression testing."
+}

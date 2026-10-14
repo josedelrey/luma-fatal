@@ -1,0 +1,34 @@
+{
+  "source_size": [
+    2048,
+    1536
+  ],
+  "target_size": [
+    1536,
+    1152
+  ],
+  "expected_x_sha256": "c7e5baad500ce27aa5f376d4f024810a415985e2ae412d8336da8e95d84764ca",
+  "expected_y_sha256": "cb9d4041a84a8dc8d5d1d19841293bdefa5b96f2933ae0f0c03163b586fb3af6",
+  "x_samples": {
+    "0": 0,
+    "1": 1,
+    "4": 5,
+    "382": 509,
+    "385": 514,
+    "388": 518,
+    "769": 1026,
+    "1535": 2047
+  },
+  "y_samples": {
+    "0": 0,
+    "1": 1,
+    "4": 5,
+    "382": 509,
+    "385": 513,
+    "769": 1025,
+    "1151": 1535
+  },
+  "scope": "Frozen source-coordinate references for nearest-neighbor reduction.",
+  "model": "Half-pixel coordinates with a 2^-15 downward bias, using float32 horizontally and float64 vertically.",
+  "reference_origin": "Externally measured reference values frozen for regression testing."
+}

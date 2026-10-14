@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "baseline_origin": "Python output snapshots frozen on 2026-10-13 for regression testing.",
+  "presets": [
+    {
+      "name": "Fattal 1",
+      "config": "configs/fattal-1.yaml",
+      "configuration": {
+        "filter": "fattal1",
+        "parameters": {
+          "alpha": 1,
+          "beta": 80,
+          "saturation": 100,
+          "noise": 0,
+          "fade": 0
+        },
+        "processing": {
+          "device_class": "medium",
+          "max_edge": 1536,
+          "max_input_pixels": 8000000,
+          "limit_input_pixels": true,
+          "resize": true,
+          "transparency": "reject",
+          "blend_mode": "normal"
+        },
+        "image": {
+          "color_space": "srgb",
+          "color_backend": "matrix_trc",
+          "exif_orientation": "apply",
+          "decode_sampling": true
+        },
+        "output": {
+          "format": "jpeg",
+          "jpeg_quality": 100,
+          "jpeg_subsampling": "420",
+          "embed_icc": false,
+          "jpeg_background": null
+        },
+        "numerics": {
+          "iterations": 80,
+          "relaxation": 1.9,
+          "pyramid_min_size": 32,
+          "normalization_low": 0.001,
+          "normalization_high": 0.995,
+          "normalization_floor": 0.0001,
+          "gradient_threshold": 0.0001,
+          "log_offset": 0.01,
+          "shadow_threshold": 6
+        },
+        "schema_version": 1
+      }
+    },
+    {
+      "name": "Fattal 2",
+      "config": "configs/fattal-2.yaml",
+      "configuration": {
+        "filter": "fattal2",
+        "parameters": {
+          "alpha": 1,
+          "beta": 80,
+          "saturation": 100,
+          "noise": 0,
+          "fade": 0
+        },
+        "processing": {
+          "device_class": "medium",
+          "max_edge": 1536,
+          "max_input_pixels": 8000000,
+          "limit_input_pixels": true,
+          "resize": true,
+          "transparency": "reject",
+          "blend_mode": "normal"
+        },
+        "image": {
+          "color_space": "srgb",
+          "color_backend": "matrix_trc",
+          "exif_orientation": "apply",
+          "decode_sampling": true
+        },
+        "output": {
+          "format": "jpeg",
+          "jpeg_quality": 100,
+          "jpeg_subsampling": "420",
+          "embed_icc": false,
+          "jpeg_background": null
+        },
+        "numerics": {
+          "iterations": 80,
+          "relaxation": 1.9,
+          "pyramid_min_size": 32,
+          "normalization_low": 0.001,
+          "normalization_high": 0.995,
+          "normalization_floor": 0.0001,
+          "gradient_threshold": 0.0001,
+          "log_offset": 0.01,
+          "shadow_threshold": 6
+        },
+        "schema_version": 1
+      }
+    }
+  ],
+  "public_samples": [
+    {
+      "id": "nasa-portrait",
+      "source": "local_inputs/nasa-portrait.jpg",
+      "source_sha256": "752846bd7bc6496b66ee4aebf1799635b676ba15b2c06adb6cf7be6da1eb91bb",
+      "expected": {
+        "fattal1": {
+          "dimensions": [
+            2529,
+            3162
+          ],
+          "rgb_sha256": "d62c79275d336f1c3f2480451b5a8f424984f5e21ea2acf4d321f2fd8547279f",
+          "encoded_sha256": "d044d52234713b1624a1caccf9892b9f356f1a2271777dfd811bc739a028ff13",
+          "decoded_rgb_sha256": "99b765def4daab722466f13fc3666f0e88fa92034764972d7d0a16cbcd2684d4",
+          "codec": {
+            "format": "JPEG",
+            "sampling": 2,
+            "all_quantization_values_one": true,
+            "embedded_icc": false
+          },
+          "color_backend": "matrix_trc",
+          "input_decode": null
+        },
+        "fattal2": {
+          "dimensions": [
+            2529,
+            3162
+          ],
+          "rgb_sha256": "a359762db9ab8e13d6af0c83f550b162f7bf60cf02a6074929635cd9457da982",
+          "encoded_sha256": "652238155ac566ac056e11e86699dc1bec835583b085aa4ee3cd21d660dfe718",
+          "decoded_rgb_sha256": "5ea31c61c25488adcbf4942fd7cab1195726705f5ca303be031f77de138183cb",
+          "codec": {
+            "format": "JPEG",
+            "sampling": 2,
+            "all_quantization_values_one": true,
+            "embedded_icc": false
+          },
+          "color_backend": "matrix_trc",
+          "input_decode": null
+        }
+      }
+    },
+    {
+      "id": "p3-noise",
+      "source": "tests/fixtures/color/jpeg_p3_car.jpg",
+      "source_sha256": "a2498f7d3c07fa266554524548cbd8e7f4c931d1fb68e04b08f0eb0a153f3766",
+      "expected": {
+        "fattal1": {
+          "dimensions": [
+            257,
+            193
+          ],
+          "rgb_sha256": "a4b50cab3000a06e8b4f0cd1919286dce3bebed7f683328dd764aef0410e34dc",
+          "encoded_sha256": "57a02671911cbbf70b0fa9d83d275d0610170405596f1fed01733b6ea6c3ba0f",
+          "decoded_rgb_sha256": "6a89ec4b543a117db9a014652f34787d6598eadcac791d3c28feb4ca136a2289",
+          "codec": {
+            "format": "JPEG",
+            "sampling": 2,
+            "all_quantization_values_one": true,
+            "embedded_icc": false
+          },
+          "color_backend": "matrix_trc",
+          "input_decode": null
+        },
+        "fattal2": {
+          "dimensions": [
+            257,
+            193
+          ],
+          "rgb_sha256": "deafce4ec4f858e4935b884f4d63ec0794a9ccb821e8d87987e7eefb0b2ccbac",
+          "encoded_sha256": "cbe35b254edffe55db15c2695e2a0609827601ba2fcf5edea82844cc8e1d4ce8",
+          "decoded_rgb_sha256": "cec887148e4ce76388fc2141ec8bc44367145eeab6c8eacd4f2fcc229d317a36",
+          "codec": {
+            "format": "JPEG",
+            "sampling": 2,
+            "all_quantization_values_one": true,
+            "embedded_icc": false
+          },
+          "color_backend": "matrix_trc",
+          "input_decode": null
+        }
+      }
+    }
+  ],
+  "private_sample": {
+    "id": "car",
+    "source_sha256": "96135ce4cc8517f8f2a86d71a3227acf45ac6b904ae057c6cd59bd980da2a334",
+    "source_distribution": "Private source is supplied explicitly to the checker and is not included in this repository",
+    "expected": {
+      "fattal1": {
+        "dimensions": [
+          3264,
+          2448
+        ],
+        "rgb_sha256": "39da7eb5f1bacf5eb0f63ed7e82e193b27819a0d487f0308b57f2e68ceb2b67b",
+        "encoded_sha256": "fa099f1c045e11b5cd2e4405b2e4e79b13eaa34c72c879cb35af1d9e93d98864",
+        "decoded_rgb_sha256": "91343e0ed08acc174acb46a9a81bb1b07b3dbdb35248475580b757451771ab98",
+        "codec": {
+          "format": "JPEG",
+          "sampling": 2,
+          "all_quantization_values_one": true,
+          "embedded_icc": false
+        },
+        "color_backend": "matrix_trc",
+        "input_decode": null
+      },
+      "fattal2": {
+        "dimensions": [
+          3264,
+          2448
+        ],
+        "rgb_sha256": "6aa2b1c770ccf03cb4febb973780b8e1f41cdd5237b459ba5f7b4e0826e87701",
+        "encoded_sha256": "d01369e7cf6ae19ebc8de0929865cc8535994309b890e024cd6da6fd50a16b74",
+        "decoded_rgb_sha256": "d4f81251b106bdd5455dd7db90833620d34a2fa38cc75a4dc0b356e824fce03e",
+        "codec": {
+          "format": "JPEG",
+          "sampling": 2,
+          "all_quantization_values_one": true,
+          "embedded_icc": false
+        },
+        "color_backend": "matrix_trc",
+        "input_decode": null
+      }
+    }
+  },
+  "creation_environment": {
+    "created_utc": "2026-10-13T16:54:49.966758+00:00",
+    "numpy": "2.4.6",
+    "numba": "0.68.0",
+    "pillow": "12.3.0",
+    "libjpeg": "6.2",
+    "libjpeg_turbo": "3.1.4.1",
+    "uv_lock_sha256": "77fa7be5be329a506b8cb0e2c85a9832a7c45eb2bd4f874aac6e3e3cd285131a"
+  }
+}

@@ -1,0 +1,289 @@
+"""Deterministic gradient-domain operators over RGB8 arrays."""
+
+from __future__ import annotations
+
+import warnings
+
+import numpy as np
+from numba import njit
+
+from .numerics import fast_pow, gradient_scale, luminance_u8, scalar_math_f32
+from .configuration import FilterParams, NumericsConfig
+
+
+def _gaussian3(source: np.ndarray) -> np.ndarray:
+    padded = np.pad(source, 1, mode="edge")
+    result = np.zeros_like(source)
+    weights = (1 / 16, 2 / 16, 1 / 16, 2 / 16, 4 / 16, 2 / 16, 1 / 16, 2 / 16, 1 / 16)
+    height, width = source.shape
+    for index, weight in enumerate(weights):
+        row, col = divmod(index, 3)
+        result += np.float32(weight) * padded[row : row + height, col : col + width]
+    return result
+
+
+def _cubic_axis(
+    length: int, output_length: int, horizontal: bool
+) -> tuple[np.ndarray, np.ndarray]:
+    # Evaluate coordinates in float64 and narrow to float32 before flooring.
+    coords = (
+        (np.arange(output_length, dtype=np.float64) + 0.5)
+        * (1 / (output_length / length))
+        - 0.5
+    ).astype(np.float32)
+    base = np.floor(coords).astype(np.int64)
+    t = coords - base.astype(np.float32)
+    if horizontal:
+        t = np.where((base < 0) | (base >= length - 1), np.float32(0), t)
+        base = np.clip(base, 0, length - 1)
+    t1 = t + np.float32(1)
+    u = np.float32(1) - t
+    w0 = (
+        (t1 * np.float32(-0.75) + np.float32(3.75)) * t1 + np.float32(-6)
+    ) * t1 + np.float32(3)
+    w1 = t * (t * np.float32(1.25) + np.float32(-2.25)) * t + np.float32(1)
+    w2 = u * (u * np.float32(1.25) + np.float32(-2.25)) * u + np.float32(1)
+    w3 = ((np.float32(1) - w0) - w1) - w2
+    indices = np.clip(base[:, None] + np.arange(-1, 3), 0, length - 1)
+    return indices, np.stack((w0, w1, w2, w3), axis=1)
+
+
+def _resize_cubic(source: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
+    """Resample scalar fields with half-pixel cubic weights (a = -0.75).
+
+    No antialias prefilter is applied. Fixed numerical references cover
+    bounded contiguous buffers. Other strides and nonfinite inputs are
+    outside the established scope.
+    """
+    if source.shape == shape:
+        return source.copy()
+    y_index, y_weight = _cubic_axis(source.shape[0], shape[0], False)
+    x_index, x_weight = _cubic_axis(source.shape[1], shape[1], True)
+    horizontal = np.zeros((source.shape[0], shape[1]), dtype=np.float32)
+    for k in range(4):
+        horizontal += source[:, x_index[:, k]] * x_weight[None, :, k]
+    result = np.zeros(shape, dtype=np.float32)
+    for k in range(4):
+        result += horizontal[y_index[:, k], :] * y_weight[:, k, None]
+    return result
+
+
+def _pyramid(log_luminance: np.ndarray, minimum_size: int = 32) -> list[np.ndarray]:
+    pyramid = [log_luminance]
+    minimum = min(log_luminance.shape)
+    levels = 0
+    while minimum >= minimum_size:
+        levels += 1
+        minimum //= 2
+    for _ in range(max(1, levels) - 1):
+        previous = pyramid[-1]
+        shape = (previous.shape[0] // 2, previous.shape[1] // 2)
+        pyramid.append(_resize_cubic(_gaussian3(previous), shape))
+    return pyramid
+
+
+def _gradient(source: np.ndarray, level: int) -> tuple[np.ndarray, np.float32]:
+    padded = np.pad(source, 1, mode="edge")
+    denominator = gradient_scale(level + 1)
+    dx = (padded[1:-1, :-2] - padded[1:-1, 2:]) / denominator
+    dy = (padded[2:, 1:-1] - padded[:-2, 1:-1]) / denominator
+    magnitude = np.sqrt(dy * dy + dx * dx)
+    # Float32 row sums precede the row-total sum to preserve accumulation order.
+    row_sums = np.cumsum(magnitude, axis=1, dtype=np.float32)[:, -1]
+    average = np.cumsum(row_sums, dtype=np.float32)[-1] / np.float32(source.size)
+    return magnitude, average
+
+
+def _phi(
+    pyramid: list[np.ndarray],
+    variant: int,
+    params: FilterParams,
+    gradient_threshold: float = 1e-4,
+) -> np.ndarray:
+    phi = np.ones_like(pyramid[-1])
+    alpha = np.float32(params.alpha) / np.float32(100)
+    exponent = np.float32(np.float32(params.beta) / np.float32(100) - np.float32(1))
+    noise = np.float32(params.noise) / np.float32(100)
+    for level in range(len(pyramid) - 1, -1, -1):
+        gradient, average = _gradient(pyramid[level], level)
+        value = np.ones_like(gradient)
+        mask = gradient > np.float32(gradient_threshold)
+        if np.any(mask) and average > 0:
+            ratio = (gradient[mask] + noise) / np.float32(alpha * average)
+            value[mask] = fast_pow(ratio, exponent)
+        if variant == 1:
+            phi *= value
+            if level:
+                phi = _gaussian3(_resize_cubic(phi, pyramid[level - 1].shape))
+        else:
+            # Variant 2 replaces the attenuation field at each finer level.
+            phi = value
+    return phi
+
+
+def _divergence(log_luminance: np.ndarray, phi: np.ndarray) -> np.ndarray:
+    gx = np.zeros_like(phi)
+    gy = np.zeros_like(phi)
+    gx[:, :-1] = (log_luminance[:, 1:] - log_luminance[:, :-1]) * phi[:, :-1]
+    gy[:-1, :] = (log_luminance[1:, :] - log_luminance[:-1, :]) * phi[:-1, :]
+    result = gx + gy
+    result[:, 1:] -= gx[:, :-1]
+    result[1:, :] -= gy[:-1, :]
+    result[0] = 0  # The first row is fixed by the solver boundary condition.
+    return result
+
+
+@njit(cache=True)
+def _sor(rhs: np.ndarray, iterations: int = 80, relaxation: float = 1.9) -> np.ndarray:
+    """Solve the discrete gradient field with paired SOR sweeps.
+
+    Rows advance serially, with the first row fixed at zero. The last column
+    is updated in both half-sweeps. Float32 operation order is preserved,
+    with no fastmath or parallel reassociation.
+    """
+    height, width = rhs.shape
+    result = np.zeros_like(rhs)
+    old_weight, new_weight = np.float32(1 - relaxation), np.float32(relaxation)
+    for _ in range(iterations):
+        for color in (1, 0):
+            for y in range(1, height):
+                start = 1
+                if (color ^ y) & 1:
+                    start = 2
+                    value = np.float32(rhs[y, 0] - result[y - 1, 0])
+                    value = np.float32(value - result[y, 1])
+                    if y < height - 1:
+                        value = np.float32(value - result[y + 1, 0])
+                        value = np.float32(value / np.float32(-3))
+                    else:
+                        value = np.float32(value * np.float32(-0.5))
+                    result[y, 0] = np.float32(
+                        result[y, 0] * old_weight + value * new_weight
+                    )
+                for x in range(start, width - 1, 2):
+                    value = np.float32(rhs[y, x] - result[y - 1, x])
+                    value = np.float32(value - result[y, x + 1])
+                    if y < height - 1:
+                        value = np.float32(value - result[y + 1, x])
+                        value = np.float32(value - result[y, x - 1])
+                        value = np.float32(value * np.float32(-0.25))
+                    else:
+                        value = np.float32(value - result[y, x - 1])
+                        value = np.float32(value / np.float32(-3))
+                    result[y, x] = np.float32(
+                        result[y, x] * old_weight + value * new_weight
+                    )
+                x = width - 1
+                value = np.float32(rhs[y, x] - result[y - 1, x])
+                if y < height - 1:
+                    value = np.float32(value - result[y + 1, x])
+                    value = np.float32(value - result[y, x - 1])
+                    value = np.float32(value / np.float32(-3))
+                else:
+                    value = np.float32(value - result[y, x - 1])
+                    value = np.float32(value * np.float32(-0.5))
+                result[y, x] = np.float32(
+                    result[y, x] * old_weight + value * new_weight
+                )
+    return result
+
+
+def _normalize(
+    source: np.ndarray,
+    low_percentile: float = 0.001,
+    high_percentile: float = 0.995,
+    floor: float = 1e-4,
+) -> np.ndarray:
+    values = np.sort(source[source != 0])
+    if not len(values):
+        return np.full_like(source, np.float32(floor))
+    low = values[
+        min(len(values) - 1, int(np.float32(len(values)) * np.float32(low_percentile)))
+    ]
+    high = values[
+        min(len(values) - 1, int(np.float32(len(values)) * np.float32(high_percentile)))
+    ]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        value = (source - low) / np.float32(high - low)
+    # Preserve NaNs with the canonical positive quiet-NaN bit pattern.
+    # This avoids platform-dependent sign bits after zero-range division.
+    nan = np.array(0x7FC00000, dtype=np.uint32).view(np.float32)
+    value = np.where(np.isnan(value), nan, value)
+    return np.where((value > 0) | np.isnan(value), value, np.float32(floor))
+
+
+def _recombine(
+    rgb: np.ndarray,
+    luminance: np.ndarray,
+    mapped: np.ndarray,
+    saturation: float,
+    shadow_threshold: int = 6,
+) -> np.ndarray:
+    # Keep the power approximation in float64 through final RGB scaling.
+    original_scale = luminance * np.float32(255)
+    ratio = np.divide(
+        rgb.astype(np.float32),
+        original_scale[..., None],
+        out=np.zeros(rgb.shape, np.float32),
+        where=original_scale[..., None] > 0,
+    )
+    from .numerics import fast_pow64
+
+    chroma = fast_pow64(ratio, np.float32(saturation) / np.float32(100))
+    result = chroma * (mapped * np.float32(255)).astype(np.float64)[..., None] + 0.5
+    # fmin maps NaNs to the upper limit before byte quantization.
+    result = np.maximum(np.fmin(result, 255), 0).astype(np.uint8)
+    result[original_scale <= shadow_threshold] = rgb[original_scale <= shadow_threshold]
+    return result
+
+
+def apply_core(
+    array: np.ndarray, variant: int, params: FilterParams, numerics: NumericsConfig
+) -> np.ndarray:
+    """Apply the effect to decoded pixels with no file or resizing policies."""
+    result = array.copy()
+    if params.fade < 100:
+        if min(array.shape[:2]) < 2:
+            warnings.warn(
+                "One-pixel-wide images use an identity extension of the solver",
+                RuntimeWarning,
+            )
+        else:
+            rgb = np.ascontiguousarray(array[..., :3])
+            luminance = luminance_u8(rgb).astype(np.float32) * np.float32(1 / 255)
+            maximum = np.max(luminance)
+            if maximum > 0:
+                # Add the offset in float64, then narrow before the scalar logarithm.
+                log_source = scalar_math_f32(
+                    (
+                        (luminance * np.float32(100) / maximum).astype(np.float64)
+                        + numerics.log_offset
+                    ).astype(np.float32),
+                    False,
+                )
+                pyramid = _pyramid(log_source, numerics.pyramid_min_size)
+                phi = _phi(pyramid, variant, params, numerics.gradient_threshold)
+                solution = _sor(
+                    _divergence(log_source, phi),
+                    numerics.iterations,
+                    numerics.relaxation,
+                )
+                mapped = _normalize(
+                    scalar_math_f32(solution, True) + np.float32(-numerics.log_offset),
+                    numerics.normalization_low,
+                    numerics.normalization_high,
+                    numerics.normalization_floor,
+                )
+                filtered = _recombine(
+                    rgb, luminance, mapped, params.saturation, numerics.shadow_threshold
+                )
+                # Opaque Normal Fade uses nearest rounding with downward ties.
+                amount = np.float32(params.fade) / np.float32(100)
+                mixed = (
+                    filtered.astype(np.float32) * (np.float32(1) - amount)
+                    + rgb.astype(np.float32) * amount
+                )
+                result[..., :3] = np.clip(
+                    np.ceil(mixed - np.float32(0.5)), 0, 255
+                ).astype(np.uint8)
+    return result
