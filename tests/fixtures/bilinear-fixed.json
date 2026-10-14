@@ -1,0 +1,118 @@
+{
+  "scope": "Frozen RGB8 references for fixed-point bilinear resampling.",
+  "trials": [
+    {
+      "seed": 309500,
+      "source_size": [
+        32,
+        24
+      ],
+      "destination_size": [
+        43,
+        32
+      ],
+      "source_rgb_sha256": "988e8002c402b5e0c99683acb77b2ab31acd10a3cc2801e6c4868ee6387ff14a",
+      "expected_rgb_sha256": "9710fb0f887e42d0cf797af7dd7530f755700eea2fa7f1f59cca0f5c62618554",
+      "opaque": true
+    },
+    {
+      "seed": 309501,
+      "source_size": [
+        64,
+        48
+      ],
+      "destination_size": [
+        128,
+        96
+      ],
+      "source_rgb_sha256": "96b010749edf3fbd4b3a196bc80a9027d1fc17787d62a64fc7ab13ef8ab31883",
+      "expected_rgb_sha256": "84663c75ccbdd194e653083f97d5009ae3de48374262e9a4383c6027d11c7f7d",
+      "opaque": true
+    },
+    {
+      "seed": 309502,
+      "source_size": [
+        64,
+        48
+      ],
+      "destination_size": [
+        136,
+        102
+      ],
+      "source_rgb_sha256": "eeec6192dc1acda3c310e4081c64debf5e832440bbaa01ce01de330375758a30",
+      "expected_rgb_sha256": "c0c58324e66f35b1e7bebaa2b4742749d0f7210b21332f91bf15f95cf2a3a61a",
+      "opaque": true
+    },
+    {
+      "seed": 309503,
+      "source_size": [
+        128,
+        96
+      ],
+      "destination_size": [
+        272,
+        204
+      ],
+      "source_rgb_sha256": "bce127ae31146c37f746d06adc69599c136bc13298f9f6ce546a81d77306a829",
+      "expected_rgb_sha256": "34a621ce2f7259f930641c756d75012ee105258fdef8da1bd1d0efc4e6cc6509",
+      "opaque": true
+    },
+    {
+      "seed": 309504,
+      "source_size": [
+        127,
+        95
+      ],
+      "destination_size": [
+        179,
+        133
+      ],
+      "source_rgb_sha256": "4254c77155aefefb6425b3f8dc189b3e7931868e4676f5a2dcd7e2ea667cd2ed",
+      "expected_rgb_sha256": "6907bab84d00673ba88713e659e9d464f2ece8669ff968f5f0dd334fa0fbb76d",
+      "opaque": true
+    },
+    {
+      "seed": 309505,
+      "source_size": [
+        113,
+        67
+      ],
+      "destination_size": [
+        257,
+        149
+      ],
+      "source_rgb_sha256": "00f2b8a78ec3565f6862c1ef124c7735180eb101bbb03ae2662e8317f32e4ffd",
+      "expected_rgb_sha256": "1df14fd56eb309bc863821a75c361516ad4ed93e9fe94044dd4a68d12a101adc",
+      "opaque": true
+    },
+    {
+      "seed": 309506,
+      "source_size": [
+        1,
+        8
+      ],
+      "destination_size": [
+        17,
+        19
+      ],
+      "source_rgb_sha256": "e7208ba922889b3ddf4b8cdbb122d905380fc80049f48034503ace404d05dba1",
+      "expected_rgb_sha256": "96ee07fcdd67ca2b84cfa26ce3ffa48e030ce6031f985c3af7cc829a865adfaf",
+      "opaque": true
+    },
+    {
+      "seed": 309507,
+      "source_size": [
+        17,
+        1
+      ],
+      "destination_size": [
+        43,
+        13
+      ],
+      "source_rgb_sha256": "3af4b01b6e17cf6b53148c6f2fb90ae720d7f9c8dccea5e6375d3b033735c6df",
+      "expected_rgb_sha256": "7d615aeb0a94d1a5ac97c6c7bb087a5abd0daf45df44bb9d289e724b57011d84",
+      "opaque": true
+    }
+  ],
+  "reference_origin": "Externally measured reference values frozen for regression testing."
+}

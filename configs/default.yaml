@@ -1,0 +1,48 @@
+# General settings. Reference presets pin their own values.
+filter: fattal1
+# Effect controls use a 0..100 scale. Alpha must be positive.
+# Fade 0 applies the full effect. Fade 100 bypasses the effect.
+parameters:
+  alpha: 1
+  beta: 80
+  saturation: 100
+  noise: 0
+  fade: 50
+# max_edge controls effect working resolution, not output dimensions.
+# max_input_pixels caps decoded image area before the effect.
+# Null limits use the selected device_class budget.
+processing:
+  device_class: medium
+  max_edge: null
+  max_input_pixels: null
+  limit_input_pixels: true
+  resize: true
+  transparency: reject
+  blend_mode: normal
+# File inputs receive EXIF orientation and ICC interpretation here.
+# Decoded RGB arrays and frame streams must already be interpreted.
+image:
+  color_space: srgb
+  color_backend: matrix_trc
+  exif_orientation: apply
+  decode_sampling: true
+# Image encoding settings do not affect in-memory frame outputs.
+output:
+  format: jpeg
+  jpeg_quality: 100
+  jpeg_subsampling: '420'
+  embed_icc: false
+  jpeg_background: null
+# Experimental controls for the deterministic gradient-domain core.
+# Reference presets fix these independently of general defaults.
+numerics:
+  iterations: 80
+  relaxation: 1.9
+  pyramid_min_size: 32
+  normalization_low: 0.001
+  normalization_high: 0.995
+  normalization_floor: 0.0001
+  gradient_threshold: 0.0001
+  log_offset: 0.01
+  shadow_threshold: 6
+schema_version: 1

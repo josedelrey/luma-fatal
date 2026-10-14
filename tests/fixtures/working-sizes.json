@@ -1,0 +1,138 @@
+{
+  "scope": "Frozen working-size references for float32 scaling and positive ties-up rounding.",
+  "trials": [
+    {
+      "source_size": [
+        2241,
+        2801
+      ],
+      "max_edge": 1536,
+      "expected_size": [
+        1229,
+        1536
+      ]
+    },
+    {
+      "source_size": [
+        3024,
+        1998
+      ],
+      "max_edge": 1536,
+      "expected_size": [
+        1536,
+        1015
+      ]
+    },
+    {
+      "source_size": [
+        1921,
+        1441
+      ],
+      "max_edge": 1536,
+      "expected_size": [
+        1536,
+        1152
+      ]
+    },
+    {
+      "source_size": [
+        3264,
+        2448
+      ],
+      "max_edge": 1536,
+      "expected_size": [
+        1536,
+        1152
+      ]
+    },
+    {
+      "source_size": [
+        2048,
+        683
+      ],
+      "max_edge": 1024,
+      "expected_size": [
+        1024,
+        342
+      ]
+    },
+    {
+      "source_size": [
+        683,
+        2048
+      ],
+      "max_edge": 1024,
+      "expected_size": [
+        342,
+        1024
+      ]
+    },
+    {
+      "source_size": [
+        3072,
+        683
+      ],
+      "max_edge": 1536,
+      "expected_size": [
+        1536,
+        342
+      ]
+    },
+    {
+      "source_size": [
+        683,
+        3072
+      ],
+      "max_edge": 1536,
+      "expected_size": [
+        342,
+        1536
+      ]
+    },
+    {
+      "source_size": [
+        4096,
+        683
+      ],
+      "max_edge": 2048,
+      "expected_size": [
+        2048,
+        342
+      ]
+    },
+    {
+      "source_size": [
+        4847,
+        3255
+      ],
+      "max_edge": 1536,
+      "expected_size": [
+        1536,
+        1032
+      ]
+    },
+    {
+      "source_size": [
+        3515,
+        3394
+      ],
+      "max_edge": 2048,
+      "expected_size": [
+        2048,
+        1978
+      ]
+    },
+    {
+      "source_size": [
+        3589,
+        3320
+      ],
+      "max_edge": 2048,
+      "expected_size": [
+        2048,
+        1895
+      ]
+    }
+  ],
+  "reference_origin": "Externally measured reference values frozen for regression testing."
+}

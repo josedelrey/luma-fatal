@@ -1,0 +1,352 @@
+"""Command-line image processing, probe generation and strict comparison."""
+
+from __future__ import annotations
+
+import argparse
+from dataclasses import asdict, replace
+import json
+from pathlib import Path
+
+from PIL import Image
+
+from .pipeline import apply_filter
+from .configuration import Config, FilterParams, resolve_config
+from .images import process_image, STATUS, _write_json, _digest
+from .probes import generate_probes
+from .validation import compare_images, write_difference_panel
+
+
+def _settings(args: argparse.Namespace) -> Config:
+    if args.config is not None and args.profile is not None:
+        raise ValueError("Use --config or --profile, not both")
+    config = (
+        Config.load(args.config)
+        if args.config
+        else resolve_config(profile=args.profile)
+    )
+    parameters = {
+        key: getattr(args, key)
+        for key in asdict(config.parameters)
+        if getattr(args, key) is not None
+    }
+    processing = {
+        key: getattr(args, key)
+        for key in (
+            "device_class",
+            "max_edge",
+            "max_input_pixels",
+            "limit_input_pixels",
+            "resize",
+            "transparency",
+            "blend_mode",
+        )
+        if getattr(args, key) is not None
+    }
+    if args.device_class is not None and args.max_edge is None:
+        processing["max_edge"] = None
+    if args.resize is False and args.max_edge is None:
+        processing["max_edge"] = None
+    if (
+        args.device_class is not None
+        or args.resize is False
+        or args.limit_input_pixels is False
+    ) and args.max_input_pixels is None:
+        processing["max_input_pixels"] = None
+    image = {
+        key: getattr(args, key)
+        for key in (
+            "color_space",
+            "color_backend",
+            "exif_orientation",
+            "decode_sampling",
+        )
+        if getattr(args, key) is not None
+    }
+    output = {
+        key: getattr(args, key)
+        for key in ("jpeg_quality", "jpeg_subsampling", "embed_icc", "jpeg_background")
+        if getattr(args, key) is not None
+    }
+    if args.output_format is not None:
+        output["format"] = args.output_format
+    return replace(
+        config,
+        filter=args.filter or config.filter,
+        parameters=replace(config.parameters, **parameters),
+        processing=replace(config.processing, **processing),
+        image=replace(config.image, **image),
+        output=replace(config.output, **output),
+    )
+
+
+def _comparison(
+    reference: Path,
+    candidate: Path,
+    original: Path | Image.Image | None,
+    output: Path,
+    gain: float,
+) -> dict:
+    record = compare_images(reference, candidate)
+    record.update(
+        reference=str(reference),
+        reference_sha256=_digest(reference),
+        candidate=str(candidate),
+        candidate_sha256=_digest(candidate),
+    )
+    _write_json(output / "metrics.json", record)
+    if original:
+        write_difference_panel(
+            original, reference, candidate, output / "differences.png", gain=gain
+        )
+    return record
+
+
+def _evaluate(args: argparse.Namespace) -> dict:
+    config = _settings(args)
+    if args.filter is None and args.config is None:
+        config = replace(config, filter="both")
+    params = config.parameters
+    rows = []
+    inputs = sorted(args.inputs.glob("*.png"))
+    if not inputs:
+        raise ValueError(f"No PNG inputs found in {args.inputs}")
+    variants = (1, 2) if config.filter == "both" else (int(config.filter[-1]),)
+    for variant in variants:
+        label = f"fattal_{variant}"
+        for original in inputs:
+            destination = args.output / label / (original.stem + config.output.suffix)
+            run = process_image(
+                original,
+                destination,
+                config=replace(config, filter=f"fattal{variant}"),
+                config_path=args.config,
+            )
+            options = [
+                args.references / label / (original.stem + suffix)
+                for suffix in (".png", ".jpg", ".jpeg")
+            ]
+            existing = [path for path in options if path.exists()]
+            if len(existing) > 1:
+                raise ValueError(
+                    f"Ambiguous reference for {label}/{original.stem}: {existing}"
+                )
+            reference = existing[0] if existing else options[0]
+            row = dict(filter=label, input=original.name, run=run)
+            if reference.exists():
+                output = args.output / "comparisons" / label / original.stem
+                with Image.open(original) as source_image:
+                    interpreted = apply_filter(
+                        source_image,
+                        variant,
+                        config=replace(
+                            config, parameters=replace(config.parameters, fade=100)
+                        ),
+                    )
+                row.update(
+                    status="compared",
+                    metrics=_comparison(reference, destination, interpreted, output, 8),
+                )
+            else:
+                row.update(
+                    status="missing_reference", expected_reference=str(reference)
+                )
+            rows.append(row)
+    compared = [row for row in rows if row["status"] == "compared"]
+    summary = dict(
+        fidelity_status=STATUS,
+        parameters=asdict(params),
+        processing_profile=config.processing.profile_name,
+        configuration=config.to_dict(),
+        records=rows,
+        compared_count=len(compared),
+        missing_count=len(rows) - len(compared),
+    )
+    if compared:
+        # Equal image weight. This average is not a dataset-wide pixel-weighted error.
+        summary["mean_image_mae"] = sum(
+            row["metrics"]["mae"] for row in compared
+        ) / len(compared)
+    _write_json(args.output / "evaluation.json", summary)
+    return summary
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(
+        description="Luma Fatal gradient-domain image processing. " + STATUS
+    )
+    commands = parser.add_subparsers(dest="command", required=True)
+    apply = commands.add_parser(
+        "apply", help="Process an image and write it plus provenance JSON"
+    )
+    apply.add_argument("input", type=Path)
+    apply.add_argument("output", type=Path)
+    apply.add_argument("--filter", choices=["fattal1", "fattal2", "both"], default=None)
+    compare = commands.add_parser(
+        "compare", help="Measure matching RGB pixels without alignment or resizing"
+    )
+    compare.add_argument("reference", type=Path)
+    compare.add_argument("candidate", type=Path)
+    compare.add_argument("--original", type=Path)
+    compare.add_argument("--output", type=Path, required=True)
+    compare.add_argument("--gain", type=float, default=8)
+    probes = commands.add_parser(
+        "probes", help="Generate deterministic RGB test patterns"
+    )
+    probes.add_argument("output", type=Path)
+    probes.add_argument("--size", type=int, default=512)
+    probes.add_argument("--seed", type=int, default=3095)
+    evaluate = commands.add_parser(
+        "evaluate", help="Process both variants and compare every available reference"
+    )
+    evaluate.add_argument("inputs", type=Path)
+    evaluate.add_argument("references", type=Path)
+    evaluate.add_argument("output", type=Path)
+    configuration = commands.add_parser(
+        "config", help="Show defaults or write a reusable configuration file"
+    )
+    configuration.add_argument("--output", type=Path)
+    evaluate.add_argument(
+        "--filter", choices=["fattal1", "fattal2", "both"], default=None
+    )
+    for command in (apply, evaluate):
+        command.add_argument(
+            "--config",
+            type=Path,
+            help="YAML configuration, CLI values override it. TOML and JSON are also supported",
+        )
+        command.add_argument(
+            "--profile",
+            choices=("core", "bounded-1536"),
+            default=None,
+            help="Processing profile, default: bounded working resolution",
+        )
+        for name, default in asdict(FilterParams()).items():
+            command.add_argument(
+                "--" + name,
+                type=float,
+                default=None,
+                help=f"Parameter scale 0..100, default {default:g}",
+            )
+        command.add_argument(
+            "--device-class", choices=("low", "medium", "high"), default=None
+        )
+        command.add_argument(
+            "--max-edge",
+            type=int,
+            default=None,
+            help="Override the device-class working limit",
+        )
+        command.add_argument(
+            "--max-input-pixels",
+            type=int,
+            default=None,
+            help="Override the import pixel-area limit",
+        )
+        command.add_argument(
+            "--limit-input-pixels", action=argparse.BooleanOptionalAction, default=None
+        )
+        command.add_argument(
+            "--resize", action=argparse.BooleanOptionalAction, default=None
+        )
+        command.add_argument(
+            "--transparency", choices=("reject", "straight"), default=None
+        )
+        command.add_argument(
+            "--blend-mode", default=None, help="Only normal is supported"
+        )
+        command.add_argument("--color-space", choices=("encoded", "srgb"), default=None)
+        command.add_argument(
+            "--color-backend",
+            choices=("matrix_trc", "lcms"),
+            default=None,
+            help="sRGB conversion backend, default matrix_trc. Unsupported inputs use a recorded LCMS fallback",
+        )
+        command.add_argument(
+            "--exif-orientation", choices=("ignore", "apply"), default=None
+        )
+        command.add_argument(
+            "--decode-sampling", action=argparse.BooleanOptionalAction, default=None
+        )
+        command.add_argument("--output-format", choices=("png", "jpeg"), default=None)
+        command.add_argument("--jpeg-quality", type=int, default=None)
+        command.add_argument(
+            "--jpeg-subsampling", choices=("444", "422", "420"), default=None
+        )
+        command.add_argument(
+            "--embed-icc", action=argparse.BooleanOptionalAction, default=None
+        )
+        command.add_argument(
+            "--jpeg-background",
+            type=int,
+            nargs=3,
+            default=None,
+            metavar=("R", "G", "B"),
+        )
+    args = parser.parse_args(argv)
+    try:
+        if args.command == "apply":
+            config = _settings(args)
+            if config.filter == "both":
+                records = [
+                    process_image(
+                        args.input,
+                        args.output / f"fattal{variant}{config.output.suffix}",
+                        config=replace(config, filter=f"fattal{variant}"),
+                        config_path=args.config,
+                    )
+                    for variant in (1, 2)
+                ]
+            else:
+                records = [
+                    process_image(
+                        args.input, args.output, config=config, config_path=args.config
+                    )
+                ]
+            print(json.dumps(records, indent=2))
+        elif args.command == "config":
+            config = Config()
+            if args.output:
+                if args.output.exists():
+                    raise ValueError(
+                        f"Configuration file already exists: {args.output}"
+                    )
+                if args.output.suffix.lower() not in (
+                    ".yaml",
+                    ".yml",
+                    ".toml",
+                    ".json",
+                ):
+                    raise ValueError(
+                        "Configuration files must use .yaml, .yml, .toml or .json"
+                    )
+                args.output.parent.mkdir(parents=True, exist_ok=True)
+                if args.output.suffix.lower() in (".yaml", ".yml"):
+                    args.output.write_text(config.to_yaml(), encoding="utf-8")
+                elif args.output.suffix.lower() == ".toml":
+                    args.output.write_text(config.to_toml(), encoding="utf-8")
+                else:
+                    _write_json(args.output, config.to_dict())
+            print(json.dumps(config.to_dict(), indent=2))
+        elif args.command == "compare":
+            print(
+                json.dumps(
+                    _comparison(
+                        args.reference,
+                        args.candidate,
+                        args.original,
+                        args.output,
+                        args.gain,
+                    ),
+                    indent=2,
+                )
+            )
+        elif args.command == "probes":
+            result = generate_probes(args.output, args.size, args.seed)
+            print(f"{len(result['probes'])} probes written to {args.output}")
+        else:
+            result = _evaluate(args)
+            print(
+                f"{result['compared_count']} compared, {result['missing_count']} missing references"
+            )
+    except (ValueError, OSError) as error:
+        parser.error(str(error))
