@@ -6,6 +6,7 @@ build-backend = "hatchling.build"
 name = "luma-fatal"
 version = "0.1.0"
 description = "Configurable gradient-domain image processing and numerical experiments"
+readme = "README.md"
 license = "MIT AND BSD-3-Clause"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
@@ -25,4 +26,4 @@ pythonpath = ["."]
 packages = ["src/luma_fatal"]
 
 [tool.hatch.build.targets.sdist]
-include = ["/src/luma_fatal", "/tests", "/configs", "/scripts/check_presets.py", "/pyproject.toml", "/uv.lock", "/LICENSE"]
+include = ["/src/luma_fatal", "/tests", "/configs", "/scripts/check_presets.py", "/pyproject.toml", "/uv.lock", "/README.md", "/LICENSE"]
