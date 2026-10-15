@@ -68,9 +68,10 @@ the configuration file. The bundled configurations are:
 | [`configs/fattal-1.yaml`](configs/fattal-1.yaml) | Complete Fattal 1 reference preset with fade 0 |
 | [`configs/fattal-2.yaml`](configs/fattal-2.yaml) | Complete Fattal 2 reference preset with fade 0 |
 
-Effect controls use a 0–100 scale, with `alpha` strictly positive. `alpha` and
-`beta` control gradient attenuation, `saturation` controls color recombination,
-and `noise` adds an offset in the attenuation calculation. `fade: 0` applies the
+`alpha`, `beta`, `saturation`, `noise`, and `fade` use a 0–100 scale, with `alpha`
+strictly positive. `alpha` and `beta` control gradient attenuation, `saturation`
+controls color recombination, and `noise` adds an offset in the attenuation
+calculation. `fade: 0` applies the
 full effect, while `fade: 100` bypasses the effect. Image preparation still
 applies when the effect is bypassed.
 
@@ -91,6 +92,42 @@ Export a complete editable configuration with:
 
 ```bash
 uv run --locked luma-fatal config --output outputs/settings.yaml
+```
+
+### Experimental controls
+
+The following settings are available in configuration files, the Python API,
+and CLI options. Both reference presets explicitly pin their neutral defaults.
+
+| Setting | Default | Experiment |
+| --- | --- | --- |
+| `numerics.detail_level` | `0` | Exclude this many finest pyramid levels from attenuation |
+| `numerics.power_mode` | `approximate` | Select the current approximation or `standard` NumPy exponentiation |
+| `processing.working_resampler` | `nearest` | Select `nearest`, `bilinear`, or `bicubic` working-resolution sampling |
+| `parameters.output_gamma` | `1.0` | Apply the curve `x^(1/gamma)` to clipped, normalized filtered RGB |
+
+`detail_level` is a nonnegative integer. It excludes fine scales while
+`pyramid_min_size` controls the coarsest scale. Retained attenuation fields are
+interpolated through the excluded levels. Excluding every available level gives
+unit attenuation, while reconstruction and normalization still apply.
+
+`standard` powers are evaluated in float64, then narrowed to float32 for
+attenuation. Color recombination retains float64. Output gamma is positive and
+finite, with a finite reciprocal. Values above 1 brighten the filtered result,
+and values below 1 darken it. The curve precedes RGB8 quantization, shadow
+preservation, and fade. Protected shadows and effect bypass skip the curve.
+In the bounded route, gamma is applied at working resolution before enlargement.
+
+The working resampler applies only when reducing to effect working resolution.
+Input-area fitting and output enlargement retain their existing methods. These
+resamplers have no antialias prefilter. Bilinear uses half-pixel coordinates and
+truncates to RGB8. Bicubic uses the scalar-field kernel with `a = -0.75`, clamps
+overshoot, and truncates to RGB8.
+
+For example, run all four controls on a bundled fixture:
+
+```bash
+uv run --locked luma-fatal apply tests/fixtures/color/noise-display-p3.jpg outputs/experiment.png --config configs/fattal-2.yaml --output-format png --detail-level 1 --power-mode standard --working-resampler bicubic --max-edge 128 --output-gamma 1.2
 ```
 
 ## Python API

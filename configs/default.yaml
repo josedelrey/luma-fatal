@@ -1,6 +1,7 @@
 # General settings. Reference presets pin their own values.
 filter: fattal1
-# Effect controls use a 0..100 scale. Alpha must be positive.
+# Effect controls use a 0..100 scale, except for positive output_gamma.
+# Alpha must be positive.
 # Fade 0 applies the full effect. Fade 100 bypasses the effect.
 parameters:
   alpha: 1
@@ -8,6 +9,8 @@ parameters:
   saturation: 100
   noise: 0
   fade: 50
+  # Filtered RGB uses x^(1/gamma) before quantization and fade.
+  output_gamma: 1.0
 # max_edge controls effect working resolution, not output dimensions.
 # max_input_pixels caps decoded image area before the effect.
 # Null limits use the selected device_class budget.
@@ -19,6 +22,7 @@ processing:
   resize: true
   transparency: reject
   blend_mode: normal
+  working_resampler: nearest
 # File inputs receive EXIF orientation and ICC interpretation here.
 # Decoded RGB arrays and frame streams must already be interpreted.
 image:
@@ -45,4 +49,6 @@ numerics:
   gradient_threshold: 0.0001
   log_offset: 0.01
   shadow_threshold: 6
+  detail_level: 0
+  power_mode: approximate
 schema_version: 1

@@ -96,6 +96,8 @@ class NumericsConfig:
     gradient_threshold: float = 0.0001
     log_offset: float = 0.01
     shadow_threshold: int = 6
+    detail_level: int = 0
+    power_mode: str = "approximate"
 
     def __post_init__(self):
         _integer("iterations", self.iterations, 1)
@@ -112,20 +114,25 @@ class NumericsConfig:
             if float(np.float32(getattr(self, name))) == 0:
                 raise ValueError(f"{name} must remain positive in float32")
         _integer("shadow_threshold", self.shadow_threshold, 0, 255)
+        _integer("detail_level", self.detail_level, 0)
+        _choice("power_mode", self.power_mode, ("approximate", "standard"))
 
 
 @dataclass(frozen=True)
 class FilterParams:
-    """Effect controls expressed on a 0..100 parameter scale."""
+    """Effect controls on a 0..100 scale, with a positive output gamma."""
 
     alpha: float = 1
     beta: float = 80
     saturation: float = 100
     noise: float = 0
     fade: float = 50
+    output_gamma: float = 1.0
 
     def __post_init__(self):
         for name, value in asdict(self).items():
+            if name == "output_gamma":
+                continue
             if (
                 isinstance(value, bool)
                 or not isinstance(value, Real)
@@ -135,6 +142,9 @@ class FilterParams:
                 raise ValueError(f"{name} must be finite and between 0 and 100")
         if self.alpha == 0:
             raise ValueError("alpha must be greater than zero")
+        _finite("output_gamma", self.output_gamma, 0, math.inf, exclusive_min=True)
+        if not math.isfinite(1.0 / self.output_gamma):
+            raise ValueError("output_gamma must have a finite reciprocal")
 
 
 @dataclass(frozen=True)
@@ -148,9 +158,13 @@ class ProcessingConfig:
     resize: bool = True
     transparency: str = "reject"
     blend_mode: str = "normal"
+    working_resampler: str = "nearest"
 
     def __post_init__(self):
         _choice("device_class", self.device_class, DEVICE_MAX_EDGES)
+        _choice(
+            "working_resampler", self.working_resampler, ("nearest", "bilinear", "bicubic")
+        )
         if self.max_edge is not None:
             _integer("max_edge", self.max_edge, 2)
         if self.max_input_pixels is not None:

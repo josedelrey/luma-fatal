@@ -7,6 +7,7 @@ parameters:
   saturation: 100
   noise: 0
   fade: 0
+  output_gamma: 1.0
 processing:
   device_class: "medium"
   max_edge: 1536
@@ -15,6 +16,7 @@ processing:
   resize: true
   transparency: "reject"
   blend_mode: "normal"
+  working_resampler: "nearest"
 image:
   color_space: "srgb"
   color_backend: "matrix_trc"
@@ -36,3 +38,5 @@ numerics:
   gradient_threshold: 0.0001
   log_offset: 0.01
   shadow_threshold: 6
+  detail_level: 0
+  power_mode: "approximate"
