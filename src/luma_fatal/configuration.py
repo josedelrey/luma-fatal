@@ -98,6 +98,7 @@ class NumericsConfig:
     shadow_threshold: int = 6
     detail_level: int = 0
     power_mode: str = "approximate"
+    shadow_softness: int = 0
 
     def __post_init__(self):
         _integer("iterations", self.iterations, 1)
@@ -114,6 +115,7 @@ class NumericsConfig:
             if float(np.float32(getattr(self, name))) == 0:
                 raise ValueError(f"{name} must remain positive in float32")
         _integer("shadow_threshold", self.shadow_threshold, 0, 255)
+        _integer("shadow_softness", self.shadow_softness, 0, 255)
         _integer("detail_level", self.detail_level, 0)
         _choice("power_mode", self.power_mode, ("approximate", "standard"))
 
