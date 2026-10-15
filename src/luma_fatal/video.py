@@ -69,7 +69,22 @@ def _process(command, **kwargs):
         finally:
             # Also runs after cancellation, failed filtering or a broken encoder pipe.
             if process.poll() is None:
-                process.terminate()
+                if os.name == "nt":
+                    # Chocolatey shims launch a child that owns the files and pipes.
+                    # Stop the tree before the launcher can leave that child orphaned.
+                    try:
+                        subprocess.run(
+                            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            creationflags=subprocess.CREATE_NO_WINDOW,
+                            timeout=5,
+                            check=False,
+                        )
+                    except (OSError, subprocess.TimeoutExpired):
+                        process.terminate()
+                else:
+                    process.terminate()
                 try:
                     process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
