@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "luma-fatal"
 version = "0.1.0"
-description = "Configurable gradient-domain image processing and numerical experiments"
+description = "Configurable gradient-domain image and video processing"
 readme = "README.md"
 license = "MIT AND BSD-3-Clause"
 license-files = ["LICENSE"]

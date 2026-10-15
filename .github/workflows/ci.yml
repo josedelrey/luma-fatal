@@ -31,7 +31,19 @@ jobs:
       - name: Install locked dependencies
         run: uv sync --locked
 
+      - name: Install FFmpeg on Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ffmpeg
+
+      - name: Install FFmpeg on Windows
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg-full --yes --no-progress
+
       - name: Run test suite
+        env:
+          LUMA_FATAL_REQUIRE_VIDEO_TESTS: "1"
         run: uv run --locked python -m pytest -q
 
       - name: Check frozen image presets
