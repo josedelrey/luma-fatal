@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Check frozen image presets offline, optionally including the private car image.
+"""Check frozen image presets using only bundled fixtures.
 
 Usage: uv run --locked python scripts/check_presets.py
-Add --sample p3-noise for the fixture-only portable check.
-Add --private-image PATH to check the private regression without redistributing it.
+Add --sample p3-noise to select a specific fixture.
 Add --output DIRECTORY to retain generated images and a JSON report.
 This checker never regenerates its expected baselines.
 """
@@ -35,7 +34,7 @@ def digest(path: Path) -> str:
 def load_contract(path: Path = CONTRACT):
     """Require complete explicit configuration and frozen semantic values."""
     contract = json.loads(path.read_text())
-    if contract["schema_version"] != 1:
+    if contract["schema_version"] != 2:
         raise ValueError("Unsupported preset regression schema")
     presets = []
     for entry in contract["presets"]:
@@ -98,12 +97,12 @@ def mismatches(expected, actual):
 
 
 def check(
-    private_image: Path | None = None,
+    *,
     output: Path | None = None,
     samples: tuple[str, ...] | None = None,
 ):
     contract, presets = load_contract()
-    entries = contract["public_samples"]
+    entries = contract["samples"]
     if samples is not None:
         if not samples:
             raise ValueError("Select at least one sample")
@@ -114,8 +113,6 @@ def check(
             )
         entries = [entry for entry in entries if entry["id"] in samples]
     cases = [(entry, ROOT / entry["source"]) for entry in entries]
-    if private_image is not None:
-        cases.append((contract["private_sample"], private_image.expanduser().resolve()))
     # Verify all inputs before producing images or creating an output directory.
     for entry, source in cases:
         if not source.is_file():
@@ -150,11 +147,10 @@ def check(
                 row["output"] = str(destination)
             records.append(row)
     report = dict(
-        schema_version=1,
+        schema_version=2,
         baseline_origin=contract["baseline_origin"],
         all_matched=all(row["matched"] for row in records),
         records=records,
-        private_sample_checked=private_image is not None,
         selected_samples=[entry["id"] for entry in entries],
         runtime_requirements="Local Python project dependencies only",
     )
@@ -165,7 +161,6 @@ def check(
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--private-image", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument(
         "--sample", action="append", help="Select a sample ID, repeat to select several"
@@ -173,7 +168,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         report = check(
-            args.private_image, args.output, tuple(args.sample) if args.sample else None
+            output=args.output, samples=tuple(args.sample) if args.sample else None
         )
     except (ValueError, FileExistsError, OSError) as error:
         parser.exit(1, f"{error}\n")

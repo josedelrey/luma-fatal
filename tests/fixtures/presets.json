@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "baseline_origin": "Python output snapshots frozen on 2026-10-13 for regression testing.",
   "presets": [
     {
@@ -99,51 +99,10 @@
       }
     }
   ],
-  "public_samples": [
-    {
-      "id": "nasa-portrait",
-      "source": "local_inputs/nasa-portrait.jpg",
-      "source_sha256": "752846bd7bc6496b66ee4aebf1799635b676ba15b2c06adb6cf7be6da1eb91bb",
-      "expected": {
-        "fattal1": {
-          "dimensions": [
-            2529,
-            3162
-          ],
-          "rgb_sha256": "d62c79275d336f1c3f2480451b5a8f424984f5e21ea2acf4d321f2fd8547279f",
-          "encoded_sha256": "d044d52234713b1624a1caccf9892b9f356f1a2271777dfd811bc739a028ff13",
-          "decoded_rgb_sha256": "99b765def4daab722466f13fc3666f0e88fa92034764972d7d0a16cbcd2684d4",
-          "codec": {
-            "format": "JPEG",
-            "sampling": 2,
-            "all_quantization_values_one": true,
-            "embedded_icc": false
-          },
-          "color_backend": "matrix_trc",
-          "input_decode": null
-        },
-        "fattal2": {
-          "dimensions": [
-            2529,
-            3162
-          ],
-          "rgb_sha256": "a359762db9ab8e13d6af0c83f550b162f7bf60cf02a6074929635cd9457da982",
-          "encoded_sha256": "652238155ac566ac056e11e86699dc1bec835583b085aa4ee3cd21d660dfe718",
-          "decoded_rgb_sha256": "5ea31c61c25488adcbf4942fd7cab1195726705f5ca303be031f77de138183cb",
-          "codec": {
-            "format": "JPEG",
-            "sampling": 2,
-            "all_quantization_values_one": true,
-            "embedded_icc": false
-          },
-          "color_backend": "matrix_trc",
-          "input_decode": null
-        }
-      }
-    },
+  "samples": [
     {
       "id": "p3-noise",
-      "source": "tests/fixtures/color/jpeg_p3_car.jpg",
+      "source": "tests/fixtures/color/noise-display-p3.jpg",
       "source_sha256": "a2498f7d3c07fa266554524548cbd8e7f4c931d1fb68e04b08f0eb0a153f3766",
       "expected": {
         "fattal1": {
@@ -183,47 +142,6 @@
       }
     }
   ],
-  "private_sample": {
-    "id": "car",
-    "source_sha256": "96135ce4cc8517f8f2a86d71a3227acf45ac6b904ae057c6cd59bd980da2a334",
-    "source_distribution": "Private source is supplied explicitly to the checker and is not included in this repository",
-    "expected": {
-      "fattal1": {
-        "dimensions": [
-          3264,
-          2448
-        ],
-        "rgb_sha256": "39da7eb5f1bacf5eb0f63ed7e82e193b27819a0d487f0308b57f2e68ceb2b67b",
-        "encoded_sha256": "fa099f1c045e11b5cd2e4405b2e4e79b13eaa34c72c879cb35af1d9e93d98864",
-        "decoded_rgb_sha256": "91343e0ed08acc174acb46a9a81bb1b07b3dbdb35248475580b757451771ab98",
-        "codec": {
-          "format": "JPEG",
-          "sampling": 2,
-          "all_quantization_values_one": true,
-          "embedded_icc": false
-        },
-        "color_backend": "matrix_trc",
-        "input_decode": null
-      },
-      "fattal2": {
-        "dimensions": [
-          3264,
-          2448
-        ],
-        "rgb_sha256": "6aa2b1c770ccf03cb4febb973780b8e1f41cdd5237b459ba5f7b4e0826e87701",
-        "encoded_sha256": "d01369e7cf6ae19ebc8de0929865cc8535994309b890e024cd6da6fd50a16b74",
-        "decoded_rgb_sha256": "d4f81251b106bdd5455dd7db90833620d34a2fa38cc75a4dc0b356e824fce03e",
-        "codec": {
-          "format": "JPEG",
-          "sampling": 2,
-          "all_quantization_values_one": true,
-          "embedded_icc": false
-        },
-        "color_backend": "matrix_trc",
-        "input_decode": null
-      }
-    }
-  },
   "creation_environment": {
     "created_utc": "2026-10-13T16:54:49.966758+00:00",
     "numpy": "2.4.6",

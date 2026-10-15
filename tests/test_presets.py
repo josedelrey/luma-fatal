@@ -15,7 +15,7 @@ from scripts import check_presets
 
 
 def test_frozen_recipes_are_complete_and_independent_of_device_defaults(monkeypatch):
-    contract, presets = check_presets.load_contract()
+    _, presets = check_presets.load_contract()
     assert [entry["name"] for entry, _ in presets] == ["Fattal 1", "Fattal 2"]
     monkeypatch.setitem(configuration.DEVICE_MAX_EDGES, "medium", 2048)
     monkeypatch.setitem(configuration.DEVICE_INPUT_PIXELS, "medium", 12_000_000)
@@ -25,13 +25,9 @@ def test_frozen_recipes_are_complete_and_independent_of_device_defaults(monkeypa
         assert config.processing.effective_max_input_pixels == 8_000_000
         assert config.image.color_backend == "matrix_trc"
         assert config.output.jpeg_background is None
-    assert contract["private_sample"]["source_distribution"].startswith(
-        "Private source"
-    )
-    assert "source" not in contract["private_sample"]
 
 
-def test_public_regressions_run_without_external_commands(monkeypatch, tmp_path):
+def test_bundled_regressions_run_without_external_commands(monkeypatch, tmp_path):
 
     def forbidden(*args, **kwargs):
         raise AssertionError("Preset regression must not execute an external command")
@@ -39,18 +35,21 @@ def test_public_regressions_run_without_external_commands(monkeypatch, tmp_path)
     monkeypatch.setattr(subprocess, "run", forbidden)
     monkeypatch.setattr(subprocess, "check_output", forbidden)
     monkeypatch.setattr(subprocess, "Popen", forbidden)
-    report = check_presets.check(output=tmp_path / "results", samples=("p3-noise",))
+    output = tmp_path / "results"
+    check_presets.main(["--output", str(output)])
+    report = json.loads((output / "report.json").read_text())
     assert report["all_matched"]
     assert len(report["records"]) == 2
-    assert not report["private_sample_checked"]
     assert (tmp_path / "results/report.json").is_file()
     for row in report["records"]:
         with Image.open(row["output"]) as image:
             assert image.format == "JPEG"
     contract, _ = check_presets.load_contract()
-    for entry in contract["public_samples"]:
-        if entry["id"] not in report["selected_samples"]:
-            continue
+    assert report["selected_samples"] == [entry["id"] for entry in contract["samples"]]
+    for entry in contract["samples"]:
+        assert (check_presets.ROOT / entry["source"]).is_relative_to(
+            check_presets.ROOT / "tests/fixtures"
+        )
         assert (
             check_presets.digest(check_presets.ROOT / entry["source"])
             == entry["source_sha256"]
@@ -63,7 +62,7 @@ def test_cli_applies_frozen_recipe_without_fade_or_codec_overrides(
 ):
     contract, presets = check_presets.load_contract()
     sample = next(
-        entry for entry in contract["public_samples"] if entry["id"] == "p3-noise"
+        entry for entry in contract["samples"] if entry["id"] == "p3-noise"
     )
     entry, config = presets[variant - 1]
     output = tmp_path / f"fattal-{variant}.jpg"
@@ -89,12 +88,16 @@ def test_cli_applies_frozen_recipe_without_fade_or_codec_overrides(
     assert record["resolved_processing"]["max_input_pixels"] == 8_000_000
 
 
-def test_changed_private_source_is_rejected_before_processing_or_writing(tmp_path):
+def test_changed_fixture_is_rejected_before_processing_or_writing(monkeypatch, tmp_path):
+    contract, presets = check_presets.load_contract()
+    contract = deepcopy(contract)
     source = tmp_path / "different.jpg"
     Image.new("RGB", (16, 16), "red").save(source)
+    contract["samples"][0]["source"] = str(source)
+    monkeypatch.setattr(check_presets, "load_contract", lambda: (contract, presets))
     output = tmp_path / "outputs"
-    with pytest.raises(ValueError, match="input changed: car"):
-        check_presets.check(private_image=source, output=output, samples=("p3-noise",))
+    with pytest.raises(ValueError, match="input changed: p3-noise"):
+        check_presets.check(output=output)
     assert not output.exists()
 
 
@@ -133,12 +136,12 @@ def test_unknown_sample_is_rejected_before_writing(tmp_path):
     assert not output.exists()
 
 
-def test_missing_local_input_is_reported_without_skipping_baselines(
+def test_missing_fixture_is_reported_without_skipping_baselines(
     monkeypatch, tmp_path
 ):
     contract, presets = check_presets.load_contract()
     contract = deepcopy(contract)
-    contract["public_samples"][0]["source"] = str(tmp_path / "missing.jpg")
+    contract["samples"][0]["source"] = str(tmp_path / "missing.jpg")
     monkeypatch.setattr(check_presets, "load_contract", lambda: (contract, presets))
     with pytest.raises(ValueError, match="Missing regression input"):
         check_presets.check()

@@ -66,7 +66,7 @@ def test_matrix_conversion_matches_full_domain_and_profile_references(row):
 
 
 def test_lcms_backend_preserves_its_color_interpretation():
-    row = next(r for r in GOLDENS["cases"] if r["id"] == "noise_p3_car")
+    row = next(r for r in GOLDENS["cases"] if r["id"] == "noise_display_p3")
     image = source(row)
     expected = ImageCms.profileToProfile(
         image,
@@ -93,7 +93,7 @@ def test_unsupported_lab_profile_uses_a_recorded_lcms_extension():
 
 
 def test_opaque_rgba_conversion_keeps_alpha_and_transparent_extension_is_explicit():
-    row = next(r for r in GOLDENS["cases"] if r["id"] == "noise_p3_car")
+    row = next(r for r in GOLDENS["cases"] if r["id"] == "noise_display_p3")
     image = source(row)
     opaque = image.convert("RGBA")
     opaque.info["icc_profile"] = profile(row)
@@ -114,7 +114,7 @@ def test_opaque_rgba_conversion_keeps_alpha_and_transparent_extension_is_explici
 
 
 def test_encoded_and_untagged_inputs_bypass_color_conversion():
-    row = next(r for r in GOLDENS["cases"] if r["id"] == "noise_p3_car")
+    row = next(r for r in GOLDENS["cases"] if r["id"] == "noise_display_p3")
     image = source(row)
     encoded = prepare_image(image, ImageConfig(color_space="encoded"))
     assert encoded.tobytes() == image.tobytes()
@@ -129,7 +129,7 @@ def test_encoded_and_untagged_inputs_bypass_color_conversion():
     "mutation", ["signature", "length", "offset", "missing", "curve-count", "duplicate"]
 )
 def test_malformed_profiles_are_rejected_without_a_silent_fallback(mutation):
-    row = next(r for r in GOLDENS["cases"] if r["id"] == "noise_p3_car")
+    row = next(r for r in GOLDENS["cases"] if r["id"] == "noise_display_p3")
     data = bytearray(profile(row))
     if mutation == "signature":
         data[36:40] = b"nope"
@@ -158,7 +158,7 @@ def test_malformed_profiles_are_rejected_without_a_silent_fallback(mutation):
 
 
 def test_matrix_backend_rejects_multidimensional_lut_and_caches_read_only_profiles():
-    row = next(r for r in GOLDENS["cases"] if r["id"] == "noise_p3_car")
+    row = next(r for r in GOLDENS["cases"] if r["id"] == "noise_display_p3")
     data = bytearray(profile(row))
     data[132:136] = b"A2B0"
     with pytest.raises(UnsupportedProfileError, match="LUT"):
@@ -170,7 +170,7 @@ def test_matrix_backend_rejects_multidimensional_lut_and_caches_read_only_profil
 
 
 def test_cli_override_and_effect_metadata_record_the_actual_backend(tmp_path, capsys):
-    row = next(r for r in GOLDENS["cases"] if r["id"] == "noise_p3_car")
+    row = next(r for r in GOLDENS["cases"] if r["id"] == "noise_display_p3")
     image = source(row)
     source_path = tmp_path / "p3.png"
     image.save(source_path, icc_profile=profile(row))

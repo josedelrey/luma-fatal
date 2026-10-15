@@ -201,7 +201,7 @@
       "cube_block": 15
     },
     {
-      "id": "noise_p3_car",
+      "id": "noise_display_p3",
       "profile": "cffd9e836cd8bc985a0527b6ead9418695f54e7c089808aa9af7d1ff4f22a551",
       "source_rgb_sha256": "6c31c8d222d422d5f3a6b1cfef163a30d9c3b5983ffc7d853c742d788410cce7",
       "expected_rgba_sha256": "0bb1fff1ffc62f773c7eccca7de76bfff0c66acbdc0330da01f19567c91f12a1",
@@ -213,7 +213,7 @@
       "seed": 20261013
     },
     {
-      "id": "jpeg_p3_car",
+      "id": "jpeg_display_p3",
       "profile": "cffd9e836cd8bc985a0527b6ead9418695f54e7c089808aa9af7d1ff4f22a551",
       "source_rgb_sha256": "c0d31b94c896f1a69629bb911c4a93c802ed406561d99515c892047532e2729a",
       "expected_rgba_sha256": "f79acd4fe2c545863f04cf205a804f992aab75b317538576221592daa11866b1",
@@ -222,7 +222,7 @@
         257,
         193
       ],
-      "file": "jpeg_p3_car.jpg",
+      "file": "noise-display-p3.jpg",
       "file_sha256": "a2498f7d3c07fa266554524548cbd8e7f4c931d1fb68e04b08f0eb0a153f3766"
     },
     {
@@ -247,7 +247,7 @@
         257,
         193
       ],
-      "file": "jpeg_srgb.jpg",
+      "file": "noise-srgb.jpg",
       "file_sha256": "b341ab394dfc453429017b65cc3ed05c6f4372dd6aa66304218e5bb00eca0a03"
     },
     {
@@ -272,7 +272,7 @@
         257,
         193
       ],
-      "file": "jpeg_linear_p3.jpg",
+      "file": "noise-linear-p3.jpg",
       "file_sha256": "32801e4a6626f4e766a4fb76f1d57edb3c1b53936053ab63e56cddffa681b30c"
     },
     {
@@ -297,7 +297,7 @@
         257,
         193
       ],
-      "file": "jpeg_adobe_gamma22.jpg",
+      "file": "noise-adobe-rgb-gamma22.jpg",
       "file_sha256": "b658bfc4f39adaeae3f362bdb5e0a53039d4521aefc1d14aceb3e64917d1b8ab"
     },
     {
@@ -322,7 +322,7 @@
         257,
         193
       ],
-      "file": "jpeg_unequal_gamma.jpg",
+      "file": "noise-unequal-gamma.jpg",
       "file_sha256": "8eb78e8562e0f24e4d5d31544e818029762b13c45c81dff7eae01c20b325332f"
     },
     {
@@ -347,7 +347,7 @@
         257,
         193
       ],
-      "file": "jpeg_table_p3.jpg",
+      "file": "noise-table-p3.jpg",
       "file_sha256": "70bd3caa677482813cc6a9399209536e9290b53c64986c2d3c7ff3e02af88431"
     }
   ],
