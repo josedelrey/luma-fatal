@@ -6,7 +6,9 @@ import io
 import json
 import os
 import shutil
+import signal
 import subprocess
+import sys
 
 import numpy as np
 import pytest
@@ -303,6 +305,45 @@ def test_filter_failure_cleans_up_processes_and_outputs(tmp_path, tools, monkeyp
     assert not destination.exists()
     assert not destination.with_suffix(".meta.json").exists()
     assert not list(tmp_path.glob(".luma-fatal-*"))
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows launcher and file-lock regression")
+def test_process_failure_stops_windows_launcher_children(tmp_path):
+    from luma_fatal.video import _process
+
+    locked = tmp_path / "child-output.mp4"
+    child = (
+        "import os, sys, time\n"
+        "with open(sys.argv[1], 'wb') as output:\n"
+        "    print(os.getpid(), flush=True)\n"
+        "    time.sleep(30)\n"
+    )
+    launcher = (
+        "import subprocess, sys\n"
+        "subprocess.run([sys.executable, '-c', sys.argv[1], sys.argv[2]], check=True)\n"
+    )
+    child_pid = None
+    try:
+        with pytest.raises(RuntimeError, match="synthetic processing failure"):
+            with _process(
+                [sys.executable, "-c", launcher, child, str(locked)],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            ) as (process, log):
+                # The child announces readiness only after acquiring the file lock.
+                child_pid = int(process.stdout.readline())
+                raise RuntimeError("synthetic processing failure")
+        assert process.poll() is not None
+        assert process.stdin.closed
+        assert process.stdout.closed
+        # Windows refuses deletion while the launcher child still owns the file.
+        locked.unlink()
+    except BaseException:
+        if child_pid is not None:
+            try:
+                os.kill(child_pid, signal.SIGTERM)
+            except OSError:
+                pass
+        raise
 
 
 def test_encoder_failure_reports_diagnostics_and_cleans_up(tmp_path, tools, monkeypatch):
