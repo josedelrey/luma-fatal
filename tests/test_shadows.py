@@ -1,6 +1,7 @@
 """Optional shadow blending retains the original reference path by default."""
 
 from dataclasses import replace
+import hashlib
 
 import numpy as np
 import pytest
@@ -138,3 +139,36 @@ def test_existing_positional_numerics_arguments_keep_their_meaning():
 def test_existing_schema_one_configuration_keeps_reference_shadow_behavior():
     config = Config.from_dict({"schema_version": 1, "numerics": {"shadow_threshold": 6}})
     assert config.numerics.shadow_softness == 0
+
+
+@pytest.mark.parametrize(
+    "power_mode,gamma,threshold,softness,expected_sha256",
+    [
+        ('approximate', 1, 6, 6,
+         '0cd6e52543c21500883b9170cf775e9fe645312719e61d715a85d0edcbed9ab3'),
+        ('standard', 1.7, 6, 12,
+         'd6594f9853d020c64d72cede2d5ac0da9f410e0c828b6d5066bbecf360094fde'),
+        ('approximate', 0.2, 0, 1,
+         'f09ce0c218f883dff3b87eedd7c590e06a16f73acc1db21356db058237271baf'),
+        ('standard', 4.0, 255, 255,
+         '73fcf8598becb22f3f5bbc9fcb01147ee90d375ba1d357e9b43891119a91a5e8'),
+        ('approximate', 1, 6, 0,
+         '4df051d59d09d5f2bc4cb6d0d7d74617bc16562dfb5c5788f18092edfd55e0ef'),
+        ('standard', 1, 255, 1,
+         '51ea5de13cc53707594a1460e207f5d90c26400fc97d20767925aeb0142f1eab'),
+    ],
+)
+def test_shadow_blending_retains_frozen_rgb_bytes(
+    power_mode, gamma, threshold, softness, expected_sha256,
+):
+    # Captured from the NumPy shadow blend before its fused-loop optimization.
+    rng = np.random.default_rng(44)
+    rgb = rng.integers(0, 256, (31, 47, 3), np.uint8)
+    rgb[:16] = rng.integers(0, 25, (16, 47, 3), np.uint8)
+    mapped = rng.uniform(-0.5, 2, (31, 47)).astype(np.float32)
+    mapped[0, :7] = [np.nan, np.inf, -np.inf, 0, -0., 1, 10.5 / 255]
+    luminance = luminance_u8(rgb).astype(np.float32) / 255
+    output = _recombine(
+        rgb, luminance, mapped, 80, threshold, power_mode, gamma, softness,
+    )
+    assert hashlib.sha256(output.tobytes()).hexdigest() == expected_sha256

@@ -218,6 +218,53 @@ def _normalize(
     return np.where((value > 0) | np.isnan(value), value, np.float32(floor))
 
 
+@njit(cache=True)
+def _quantize_smooth_shadows(
+    rgb: np.ndarray,
+    filtered: np.ndarray,
+    shadow_threshold: int,
+    shadow_softness: int,
+) -> np.ndarray:
+    """Blend smooth shadow protection and quantize in one serial pixel pass."""
+    lower = max(0, shadow_threshold - shadow_softness)
+    upper = min(255, shadow_threshold + shadow_softness)
+    output = np.empty(rgb.shape, np.uint8)
+    for y in range(rgb.shape[0]):
+        for x in range(rgb.shape[1]):
+            # Match the fractional mask's float64 operation order without fastmath.
+            luminance = (
+                4899 * np.float64(rgb[y, x, 0])
+                + 9617 * np.float64(rgb[y, x, 1])
+                + 1868 * np.float64(rgb[y, x, 2])
+            ) / 16384
+            if luminance <= lower:
+                for channel in range(3):
+                    output[y, x, channel] = rgb[y, x, channel]
+                continue
+            transition = luminance < upper
+            weight = 1.0
+            if transition:
+                t = (luminance - lower) / (upper - lower)
+                weight = t * t * (3 - 2 * t)
+            for channel in range(3):
+                value = filtered[y, x, channel]
+                if transition:
+                    # Preserve fmin's NaN-to-white rule before shadow blending.
+                    if np.isnan(value) or value > 255:
+                        value = 255.0
+                    elif value < 0:
+                        value = 0.0
+                    original = np.float64(rgb[y, x, channel])
+                    value = original + weight * (value - original)
+                value = value + 0.5
+                if np.isnan(value) or value > 255:
+                    value = 255.0
+                elif value < 0:
+                    value = 0.0
+                output[y, x, channel] = np.uint8(value)
+    return output
+
+
 def _recombine(
     rgb: np.ndarray,
     luminance: np.ndarray,
@@ -243,30 +290,11 @@ def _recombine(
         unit = np.maximum(np.fmin(result, 255), 0) / 255
         result = np.power(unit, 1.0 / output_gamma) * 255
     if shadow_softness:
-        # Fractional luminance avoids integer steps in the optional shadow mask.
-        channels = rgb.astype(np.float64)
-        shadow_luminance = (
-            4899 * channels[..., 0]
-            + 9617 * channels[..., 1]
-            + 1868 * channels[..., 2]
-        ) / 16384
-        lower = max(0, shadow_threshold - shadow_softness)
-        upper = min(255, shadow_threshold + shadow_softness)
-        protected = shadow_luminance <= lower
-        transition = (shadow_luminance > lower) & (shadow_luminance < upper)
-        result[protected] = channels[protected]
-        t = (shadow_luminance[transition] - lower) / (upper - lower)
-        weight = (t * t * (3 - 2 * t))[..., None]
-        # Blend bounded filtered RGB after gamma, before its single quantization.
-        candidate = np.maximum(np.fmin(result[transition], 255), 0)
-        result[transition] = (
-            channels[transition] + weight * (candidate - channels[transition])
-        )
+        return _quantize_smooth_shadows(rgb, result, shadow_threshold, shadow_softness)
     result = result + 0.5
     # fmin maps NaNs to the upper limit before byte quantization.
     result = np.maximum(np.fmin(result, 255), 0).astype(np.uint8)
-    if not shadow_softness:
-        result[original_scale <= shadow_threshold] = rgb[original_scale <= shadow_threshold]
+    result[original_scale <= shadow_threshold] = rgb[original_scale <= shadow_threshold]
     return result
 
 
