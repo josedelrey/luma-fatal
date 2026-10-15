@@ -146,11 +146,13 @@ uv run --locked luma-fatal config --output outputs/settings.yaml
 
 The following settings are available in configuration files, the Python API,
 and CLI options. Both reference presets explicitly pin their neutral defaults.
+New controls are opt-in and retain the original preset output when disabled.
 
 | Setting | Default | Experiment |
 | --- | --- | --- |
 | `numerics.detail_level` | `0` | Exclude this many finest pyramid levels from attenuation |
 | `numerics.power_mode` | `approximate` | Select the current approximation or `standard` NumPy exponentiation |
+| `numerics.shadow_softness` | `0` | Smooth the original shadow cutoff with a transition half-width of 1–255 luminance levels |
 | `processing.working_resampler` | `nearest` | Select `nearest`, `bilinear`, or `bicubic` working-resolution sampling |
 | `parameters.output_gamma` | `1.0` | Apply the curve `x^(1/gamma)` to clipped, normalized filtered RGB |
 
@@ -172,7 +174,28 @@ resamplers have no antialias prefilter. Bilinear uses half-pixel coordinates and
 truncates to RGB8. Bicubic uses the scalar-field kernel with `a = -0.75`, clamps
 overshoot, and truncates to RGB8.
 
-For example, run all four controls on a bundled fixture:
+`shadow_softness: 0` retains the original hard shadow cutoff byte-for-byte.
+A positive integer blends original RGB into filtered RGB with a smoothstep curve
+between `max(0, shadow_threshold - shadow_softness)` and
+`min(255, shadow_threshold + shadow_softness)`. Below that interval the original
+pixels are preserved, and above it the existing filtered output is unchanged.
+The mask uses fractional luminance with the existing RGB weights. The blend
+uses clipped filtered RGB after output gamma and before quantization and fade.
+It applies at working resolution in the bounded route, including video frames.
+This control changes shadow handling while retaining the existing texture
+calculation. It does not denoise frames or suppress codec blocks.
+
+For example, try a half-width of 6 on a video with either reference preset:
+
+```bash
+uv run --locked luma-fatal video local_inputs/input.mp4 outputs/smooth-shadows.mp4 --config configs/fattal-1.yaml --shadow-softness 6
+```
+
+The preset remains unchanged. The CLI override and resolved settings are recorded
+in the output metadata. Brightening deep shadows may reveal source noise, so
+compare the transition on your own footage before increasing its width.
+
+For example, run the other four controls on a bundled fixture:
 
 ```bash
 uv run --locked luma-fatal apply tests/fixtures/color/noise-display-p3.jpg outputs/experiment.png --config configs/fattal-2.yaml --output-format png --detail-level 1 --power-mode standard --working-resampler bicubic --max-edge 128 --output-gamma 1.2

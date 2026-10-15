@@ -226,6 +226,7 @@ def _recombine(
     shadow_threshold: int = 6,
     power_mode: str = "approximate",
     output_gamma: float = 1.0,
+    shadow_softness: int = 0,
 ) -> np.ndarray:
     # Keep color powers in float64 through final RGB scaling.
     original_scale = luminance * np.float32(255)
@@ -241,10 +242,31 @@ def _recombine(
         # Apply the curve to filtered RGB before byte quantization and fade.
         unit = np.maximum(np.fmin(result, 255), 0) / 255
         result = np.power(unit, 1.0 / output_gamma) * 255
+    if shadow_softness:
+        # Fractional luminance avoids integer steps in the optional shadow mask.
+        channels = rgb.astype(np.float64)
+        shadow_luminance = (
+            4899 * channels[..., 0]
+            + 9617 * channels[..., 1]
+            + 1868 * channels[..., 2]
+        ) / 16384
+        lower = max(0, shadow_threshold - shadow_softness)
+        upper = min(255, shadow_threshold + shadow_softness)
+        protected = shadow_luminance <= lower
+        transition = (shadow_luminance > lower) & (shadow_luminance < upper)
+        result[protected] = channels[protected]
+        t = (shadow_luminance[transition] - lower) / (upper - lower)
+        weight = (t * t * (3 - 2 * t))[..., None]
+        # Blend bounded filtered RGB after gamma, before its single quantization.
+        candidate = np.maximum(np.fmin(result[transition], 255), 0)
+        result[transition] = (
+            channels[transition] + weight * (candidate - channels[transition])
+        )
     result = result + 0.5
     # fmin maps NaNs to the upper limit before byte quantization.
     result = np.maximum(np.fmin(result, 255), 0).astype(np.uint8)
-    result[original_scale <= shadow_threshold] = rgb[original_scale <= shadow_threshold]
+    if not shadow_softness:
+        result[original_scale <= shadow_threshold] = rgb[original_scale <= shadow_threshold]
     return result
 
 
@@ -300,6 +322,7 @@ def apply_core(
                     numerics.shadow_threshold,
                     numerics.power_mode,
                     params.output_gamma,
+                    numerics.shadow_softness,
                 )
                 # Opaque Normal Fade uses nearest rounding with downward ties.
                 amount = np.float32(params.fade) / np.float32(100)

@@ -119,13 +119,17 @@ def test_decoder_handles_partial_reads_and_truncated_frames():
 
 
 @pytest.mark.parametrize("filter_name", ["fattal1", "fattal2"])
-def test_video_matches_image_processing_and_preserves_timing(tmp_path, tools, filter_name):
+@pytest.mark.parametrize("shadow_softness", [0, 6])
+def test_video_matches_image_processing_and_preserves_timing(
+    tmp_path, tools, filter_name, shadow_softness,
+):
     source = make_clip(tmp_path / "synthetic.mkv", tools, audio=True, offset=2)
     original = source.read_bytes()
     destination = tmp_path / "nested" / "filtered.mp4"
     config = Config(
         filter=filter_name, parameters=FilterParams(fade=0),
-        processing=ProcessingConfig(max_edge=24), numerics=NumericsConfig(iterations=11),
+        processing=ProcessingConfig(max_edge=24),
+        numerics=NumericsConfig(iterations=11, shadow_softness=shadow_softness),
     )
     expected = hashlib.sha256()
     for frame in reference_rgb(source, tools, 47, 35):
@@ -192,11 +196,13 @@ def test_cli_loads_config_and_applies_overrides(tmp_path, tools, capsys):
     main([
         "video", str(source), str(output), "--config", str(config), "--filter", "fattal2",
         "--fade", "100", "--crf", "23", "--preset", "ultrafast",
+        "--shadow-softness", "6",
         "--ffmpeg", tools[0], "--ffprobe", tools[1],
     ])
     record = json.loads(capsys.readouterr().out)
     assert record["filter"] == "fattal2"
     assert record["configuration"]["parameters"]["fade"] == 100
+    assert record["configuration"]["numerics"]["shadow_softness"] == 6
     assert record["video_configuration"] == {"crf": 23, "preset": "ultrafast"}
     assert record["config_source"]["sha256"] == hashlib.sha256(config.read_bytes()).hexdigest()
     assert record["padding"]["right"] == record["padding"]["bottom"] == 0

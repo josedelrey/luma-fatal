@@ -19,7 +19,7 @@ def test_experimental_configuration_round_trips(suffix, tmp_path):
     config = Config(
         parameters=FilterParams(output_gamma=1.6),
         processing=ProcessingConfig(working_resampler="bicubic"),
-        numerics=NumericsConfig(detail_level=2, power_mode="standard"),
+        numerics=NumericsConfig(detail_level=2, power_mode="standard", shadow_softness=6),
     )
     path = tmp_path / f"settings.{suffix}"
     content = {
@@ -227,8 +227,9 @@ def test_gamma_is_applied_before_fade_and_bypassed_at_fade_100(max_edge):
     np.testing.assert_array_equal(apply_filter(pixels, config=identity), pixels)
 
 
+@pytest.mark.parametrize("shadow_softness", [0, 6])
 def test_cli_overrides_experimental_settings_and_records_resolved_values(
-    tmp_path, capsys
+    tmp_path, capsys, shadow_softness
 ):
     pixels = np.random.default_rng(27).integers(0, 256, (67, 91, 3), np.uint8)
     source, output = tmp_path / "source.png", tmp_path / "output.png"
@@ -236,7 +237,9 @@ def test_cli_overrides_experimental_settings_and_records_resolved_values(
     config = Config(
         parameters=FilterParams(fade=0, output_gamma=0.8),
         processing=ProcessingConfig(max_edge=40, working_resampler="bicubic"),
-        numerics=NumericsConfig(iterations=7, pyramid_min_size=8, detail_level=2),
+        numerics=NumericsConfig(
+            iterations=7, pyramid_min_size=8, detail_level=2, shadow_softness=3
+        ),
     )
     path = tmp_path / "settings.yaml"
     path.write_text(config.to_yaml())
@@ -245,6 +248,7 @@ def test_cli_overrides_experimental_settings_and_records_resolved_values(
             "apply", str(source), str(output), "--config", str(path),
             "--output-format", "png", "--output-gamma", "1.6", "--detail-level", "1",
             "--power-mode", "standard", "--working-resampler", "bilinear",
+            "--shadow-softness", str(shadow_softness),
         ]
     )
     record = json.loads(output.with_suffix(".meta.json").read_text())
@@ -252,7 +256,8 @@ def test_cli_overrides_experimental_settings_and_records_resolved_values(
     assert resolved.parameters == replace(config.parameters, output_gamma=1.6)
     assert resolved.processing == replace(config.processing, working_resampler="bilinear")
     assert resolved.numerics == replace(
-        config.numerics, detail_level=1, power_mode="standard"
+        config.numerics, detail_level=1, power_mode="standard",
+        shadow_softness=shadow_softness,
     )
     with Image.open(output) as image:
         np.testing.assert_array_equal(

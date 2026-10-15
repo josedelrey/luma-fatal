@@ -73,7 +73,7 @@ def _settings(args: argparse.Namespace) -> Config:
         output["format"] = args.output_format
     numerics = {
         name: getattr(args, name)
-        for name in ("detail_level", "power_mode")
+        for name in ("detail_level", "power_mode", "shadow_softness")
         if getattr(args, name) is not None
     }
     return replace(
@@ -263,6 +263,12 @@ def main(argv: list[str] | None = None) -> None:
             choices=("approximate", "standard"),
             default=None,
             help="Power function for attenuation and color recombination",
+        )
+        command.add_argument(
+            "--shadow-softness",
+            type=int,
+            default=None,
+            help="Shadow transition half-width in luminance levels, 0 keeps the reference cutoff",
         )
         command.add_argument(
             "--working-resampler",
