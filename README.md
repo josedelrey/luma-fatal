@@ -56,6 +56,54 @@ For both variants in one invocation, set `--filter both` and pass an output
 directory. For the complete command reference, run
 `uv run --locked luma-fatal --help` or `uv run --locked luma-fatal apply --help`.
 
+## Process a video
+
+Video processing also requires `ffmpeg` and `ffprobe` on `PATH`. FFmpeg must
+include the `zscale` filter and `libx264` encoder. No additional Python
+dependencies are needed.
+
+```bash
+uv run --locked luma-fatal video local_inputs/input.mp4 outputs/stylized.mp4 --config configs/fattal-1.yaml
+```
+
+The first video adapter supports one progressive, square-pixel, constant-frame-rate
+video stream with explicit BT.709 matrix, transfer, primaries and range tags.
+Inputs must use opaque 8-bit planar YUV 4:2:0, 4:2:2 or 4:4:4. Untagged color,
+HDR, interlacing, display rotation and variable frame rate are rejected.
+
+Frames are converted to full-range sRGB RGB8 before filtering and converted back
+to limited-range BT.709 for H.264 MP4 export. The conversion uses zscale's
+display-referred BT.709/BT.1886 interpretation. Processing is sequential with
+bounded frame buffering. A preliminary decoding pass validates every frame's
+timing, geometry and color tags. Output timestamps start at zero and retain the
+source's rational frame rate.
+
+Output is **silent**. Audio, subtitles and other streams are discarded. Filtering
+is independent per frame, so temporal flicker is possible. The image processing
+limits still apply, while image ICC, EXIF and JPEG/PNG export settings do not.
+Odd processed dimensions are padded at the right and bottom by repeating edge
+pixels to make the H.264 YUV420P output dimensions even.
+
+Use `--crf` (default 18) and `--preset` (default `medium`) to control H.264 export.
+Existing output files or metadata sidecars are refused. Each successful run writes
+a `.meta.json` sidecar with resolved settings, color/timing policies, dimensions,
+frame count, hashes, dependency/tool versions and implementation fingerprints.
+Encoded video bytes can differ between FFmpeg versions and platforms.
+
+The Python API is available from `luma_fatal.video`:
+
+```python
+from luma_fatal import Config
+from luma_fatal.video import VideoConfig, process_video
+
+record = process_video(
+    "local_inputs/input.mp4",
+    "outputs/stylized.mp4",
+    config=Config.load("configs/fattal-1.yaml"),
+    video_config=VideoConfig(crf=18, preset="medium"),
+)
+```
+
 ## Configuration
 
 Settings can be loaded from YAML, TOML, or JSON. Explicit CLI options override
@@ -182,6 +230,13 @@ The checker fails on missing inputs or mismatches and never regenerates its
 expected values. Add `--output outputs/preset-check` to retain generated images
 and a JSON report. The output directory must be new.
 
+Video tests generate short deterministic clips and synthetic audio locally with
+FFmpeg. They require no downloaded media or private inputs. Video integration
+tests are skipped when FFmpeg/ffprobe are absent locally. CI installs these tools
+and requires the video tests to run. Known grayscale values check color transfer,
+and frame hashes check exact agreement with the image API before lossy encoding.
+Container checks cover frame counts, timestamps, geometry and color tags.
+
 The [CI workflow](.github/workflows/ci.yml) runs these checks and builds the
 source distribution and wheel on Ubuntu and Windows with Python 3.11. Frozen
 references establish behavior for the tested cases. Exact equality across all
@@ -196,8 +251,8 @@ Transparency, HEIC, high-bit-depth images, and arbitrary ICC LUT transforms
 are outside the validated scope.
 
 `process_frames` processes decoded RGB8 arrays lazily and in order. It has no
-temporal state. Video decoding, encoding, audio, timestamps, and temporal
-stabilization are not implemented.
+temporal state. The video adapter provides decoding, encoding and validated CFR
+timing. Audio preservation and temporal stabilization are not implemented.
 
 ## References and license
 

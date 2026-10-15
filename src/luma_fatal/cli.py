@@ -1,4 +1,4 @@
-"""Command-line image processing, probe generation and strict comparison."""
+"""Command-line image/video processing, probes and strict comparison."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from .configuration import Config, FilterParams, resolve_config
 from .images import process_image, STATUS, _write_json, _digest
 from .probes import generate_probes
 from .validation import compare_images, write_difference_panel
+from .video import VideoConfig, process_video
 
 
 def _settings(args: argparse.Namespace) -> Config:
@@ -27,7 +28,7 @@ def _settings(args: argparse.Namespace) -> Config:
     parameters = {
         key: getattr(args, key)
         for key in asdict(config.parameters)
-        if getattr(args, key) is not None
+        if getattr(args, key, None) is not None
     }
     processing = {
         key: getattr(args, key)
@@ -41,7 +42,7 @@ def _settings(args: argparse.Namespace) -> Config:
             "blend_mode",
             "working_resampler",
         )
-        if getattr(args, key) is not None
+        if getattr(args, key, None) is not None
     }
     if args.device_class is not None and args.max_edge is None:
         processing["max_edge"] = None
@@ -61,14 +62,14 @@ def _settings(args: argparse.Namespace) -> Config:
             "exif_orientation",
             "decode_sampling",
         )
-        if getattr(args, key) is not None
+        if getattr(args, key, None) is not None
     }
     output = {
         key: getattr(args, key)
         for key in ("jpeg_quality", "jpeg_subsampling", "embed_icc", "jpeg_background")
-        if getattr(args, key) is not None
+        if getattr(args, key, None) is not None
     }
-    if args.output_format is not None:
+    if getattr(args, "output_format", None) is not None:
         output["format"] = args.output_format
     numerics = {
         name: getattr(args, name)
@@ -179,7 +180,7 @@ def _evaluate(args: argparse.Namespace) -> dict:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        description="Luma Fatal gradient-domain image processing. " + STATUS
+        description="Luma Fatal gradient-domain image and video processing. " + STATUS
     )
     commands = parser.add_subparsers(dest="command", required=True)
     apply = commands.add_parser(
@@ -188,6 +189,19 @@ def main(argv: list[str] | None = None) -> None:
     apply.add_argument("input", type=Path)
     apply.add_argument("output", type=Path)
     apply.add_argument("--filter", choices=["fattal1", "fattal2", "both"], default=None)
+    video = commands.add_parser(
+        "video",
+        help="Process tagged BT.709 constant-frame-rate video into silent H.264 MP4",
+    )
+    video.add_argument("input", type=Path)
+    video.add_argument("output", type=Path)
+    video.add_argument("--filter", choices=("fattal1", "fattal2"), default=None)
+    video.add_argument("--crf", type=int, default=18)
+    video.add_argument("--preset", default="medium", help="H.264 encoder speed preset")
+    video.add_argument(
+        "--ffmpeg", default="ffmpeg", help="FFmpeg executable with zscale and libx264"
+    )
+    video.add_argument("--ffprobe", default="ffprobe", help="ffprobe executable")
     compare = commands.add_parser(
         "compare", help="Measure matching RGB pixels without alignment or resizing"
     )
@@ -215,7 +229,7 @@ def main(argv: list[str] | None = None) -> None:
     evaluate.add_argument(
         "--filter", choices=["fattal1", "fattal2", "both"], default=None
     )
-    for command in (apply, evaluate):
+    for command in (apply, evaluate, video):
         command.add_argument(
             "--config",
             type=Path,
@@ -283,6 +297,8 @@ def main(argv: list[str] | None = None) -> None:
         command.add_argument(
             "--blend-mode", default=None, help="Only normal is supported"
         )
+        if command is video:
+            continue
         command.add_argument("--color-space", choices=("encoded", "srgb"), default=None)
         command.add_argument(
             "--color-backend",
@@ -332,6 +348,17 @@ def main(argv: list[str] | None = None) -> None:
                     )
                 ]
             print(json.dumps(records, indent=2))
+        elif args.command == "video":
+            record = process_video(
+                args.input,
+                args.output,
+                config=_settings(args),
+                config_path=args.config,
+                video_config=VideoConfig(crf=args.crf, preset=args.preset),
+                ffmpeg=args.ffmpeg,
+                ffprobe=args.ffprobe,
+            )
+            print(json.dumps(record, indent=2))
         elif args.command == "config":
             config = Config()
             if args.output:
