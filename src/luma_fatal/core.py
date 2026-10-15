@@ -7,7 +7,7 @@ import warnings
 import numpy as np
 from numba import njit
 
-from .numerics import fast_pow, gradient_scale, luminance_u8, scalar_math_f32
+from .numerics import gradient_scale, luminance_u8, power64, scalar_math_f32
 from .configuration import FilterParams, NumericsConfig
 
 
@@ -99,25 +99,31 @@ def _phi(
     variant: int,
     params: FilterParams,
     gradient_threshold: float = 1e-4,
+    detail_level: int = 0,
+    power_mode: str = "approximate",
 ) -> np.ndarray:
+    """Build attenuation while omitting the selected finest pyramid levels."""
+    if detail_level >= len(pyramid):
+        return np.ones_like(pyramid[0])
     phi = np.ones_like(pyramid[-1])
     alpha = np.float32(params.alpha) / np.float32(100)
     exponent = np.float32(np.float32(params.beta) / np.float32(100) - np.float32(1))
     noise = np.float32(params.noise) / np.float32(100)
     for level in range(len(pyramid) - 1, -1, -1):
-        gradient, average = _gradient(pyramid[level], level)
-        value = np.ones_like(gradient)
-        mask = gradient > np.float32(gradient_threshold)
-        if np.any(mask) and average > 0:
-            ratio = (gradient[mask] + noise) / np.float32(alpha * average)
-            value[mask] = fast_pow(ratio, exponent)
-        if variant == 1:
-            phi *= value
-            if level:
-                phi = _gaussian3(_resize_cubic(phi, pyramid[level - 1].shape))
-        else:
-            # Variant 2 replaces the attenuation field at each finer level.
-            phi = value
+        if level >= detail_level:
+            gradient, average = _gradient(pyramid[level], level)
+            value = np.ones_like(gradient)
+            mask = gradient > np.float32(gradient_threshold)
+            if np.any(mask) and average > 0:
+                ratio = (gradient[mask] + noise) / np.float32(alpha * average)
+                value[mask] = power64(ratio, exponent, power_mode).astype(np.float32)
+            if variant == 1:
+                phi *= value
+            else:
+                # Variant 2 replaces the attenuation field at each finer level.
+                phi = value
+        if level and (variant == 1 or level <= detail_level):
+            phi = _gaussian3(_resize_cubic(phi, pyramid[level - 1].shape))
     return phi
 
 
@@ -218,8 +224,10 @@ def _recombine(
     mapped: np.ndarray,
     saturation: float,
     shadow_threshold: int = 6,
+    power_mode: str = "approximate",
+    output_gamma: float = 1.0,
 ) -> np.ndarray:
-    # Keep the power approximation in float64 through final RGB scaling.
+    # Keep color powers in float64 through final RGB scaling.
     original_scale = luminance * np.float32(255)
     ratio = np.divide(
         rgb.astype(np.float32),
@@ -227,10 +235,13 @@ def _recombine(
         out=np.zeros(rgb.shape, np.float32),
         where=original_scale[..., None] > 0,
     )
-    from .numerics import fast_pow64
-
-    chroma = fast_pow64(ratio, np.float32(saturation) / np.float32(100))
-    result = chroma * (mapped * np.float32(255)).astype(np.float64)[..., None] + 0.5
+    chroma = power64(ratio, np.float32(saturation) / np.float32(100), power_mode)
+    result = chroma * (mapped * np.float32(255)).astype(np.float64)[..., None]
+    if output_gamma != 1.0:
+        # Apply the curve to filtered RGB before byte quantization and fade.
+        unit = np.maximum(np.fmin(result, 255), 0) / 255
+        result = np.power(unit, 1.0 / output_gamma) * 255
+    result = result + 0.5
     # fmin maps NaNs to the upper limit before byte quantization.
     result = np.maximum(np.fmin(result, 255), 0).astype(np.uint8)
     result[original_scale <= shadow_threshold] = rgb[original_scale <= shadow_threshold]
@@ -262,7 +273,14 @@ def apply_core(
                     False,
                 )
                 pyramid = _pyramid(log_source, numerics.pyramid_min_size)
-                phi = _phi(pyramid, variant, params, numerics.gradient_threshold)
+                phi = _phi(
+                    pyramid,
+                    variant,
+                    params,
+                    numerics.gradient_threshold,
+                    numerics.detail_level,
+                    numerics.power_mode,
+                )
                 solution = _sor(
                     _divergence(log_source, phi),
                     numerics.iterations,
@@ -275,7 +293,13 @@ def apply_core(
                     numerics.normalization_floor,
                 )
                 filtered = _recombine(
-                    rgb, luminance, mapped, params.saturation, numerics.shadow_threshold
+                    rgb,
+                    luminance,
+                    mapped,
+                    params.saturation,
+                    numerics.shadow_threshold,
+                    numerics.power_mode,
+                    params.output_gamma,
                 )
                 # Opaque Normal Fade uses nearest rounding with downward ties.
                 amount = np.float32(params.fade) / np.float32(100)

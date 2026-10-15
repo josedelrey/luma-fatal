@@ -120,6 +120,31 @@ def resize_linear_floor(rgb: np.ndarray, size: tuple[int, int]) -> np.ndarray:
     return result
 
 
+def resize_working(
+    rgb: np.ndarray, size: tuple[int, int], method: str = "nearest"
+) -> np.ndarray:
+    """Select working pixels without an antialias prefilter.
+
+    Bilinear uses half-pixel coordinates and truncates to RGB8. Bicubic uses
+    the scalar-field kernel (a = -0.75), clamps overshoot and truncates to RGB8.
+    Nearest preserves the fixed coordinate contract of the reference presets.
+    """
+    if method == "nearest":
+        return resize_nearest(rgb, size)
+    if method == "bilinear":
+        return resize_linear_floor(rgb, size)
+    if method == "bicubic":
+        from .core import _resize_cubic
+
+        shape = (size[1], size[0])
+        channels = [
+            _resize_cubic(rgb[..., channel].astype(np.float32), shape)
+            for channel in range(3)
+        ]
+        return np.clip(np.stack(channels, axis=-1), 0, 255).astype(np.uint8)
+    raise ValueError("working_resampler must be nearest, bilinear or bicubic")
+
+
 def _filtered_axis(source: int, destination: int, *, horizontal: bool):
     """Compute clamped coordinates with float32 scaling and 32.32 stepping."""
     inverse = np.float32(1 / np.float32(destination / source))
@@ -213,7 +238,7 @@ def process_pixels(
         return apply_core(array, variant, params, numerics)
     # The effect operates at working resolution before output enlargement.
     rgb = array[..., :3]
-    work = resize_nearest(rgb, work_size)
+    work = resize_working(rgb, work_size, processing.working_resampler)
     filtered = apply_core(work, variant, replace(params, fade=0), numerics)
     enlarged = enlarge_progressive(filtered, size)
     amount = np.float32(params.fade) / np.float32(100)

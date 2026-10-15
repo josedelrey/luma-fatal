@@ -18,7 +18,7 @@ def fattal1(
     config: Config | None = None,
     **parameters: float,
 ) -> Image.Image | np.ndarray:
-    """Apply Fattal 1 with effect parameters expressed on a 0..100 scale."""
+    """Apply Fattal 1 with effect controls and optional output gamma."""
     resolved = resolve_config(config, profile)
     return apply_filter(
         image, 1, replace(resolved.parameters, **parameters), config=resolved
@@ -32,7 +32,7 @@ def fattal2(
     config: Config | None = None,
     **parameters: float,
 ) -> Image.Image | np.ndarray:
-    """Apply Fattal 2 with effect parameters expressed on a 0..100 scale."""
+    """Apply Fattal 2 with effect controls and optional output gamma."""
     resolved = resolve_config(config, profile)
     return apply_filter(
         image, 2, replace(resolved.parameters, **parameters), config=resolved

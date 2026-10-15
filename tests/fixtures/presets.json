@@ -12,7 +12,8 @@
           "beta": 80,
           "saturation": 100,
           "noise": 0,
-          "fade": 0
+          "fade": 0,
+          "output_gamma": 1.0
         },
         "processing": {
           "device_class": "medium",
@@ -21,7 +22,8 @@
           "limit_input_pixels": true,
           "resize": true,
           "transparency": "reject",
-          "blend_mode": "normal"
+          "blend_mode": "normal",
+          "working_resampler": "nearest"
         },
         "image": {
           "color_space": "srgb",
@@ -45,7 +47,9 @@
           "normalization_floor": 0.0001,
           "gradient_threshold": 0.0001,
           "log_offset": 0.01,
-          "shadow_threshold": 6
+          "shadow_threshold": 6,
+          "detail_level": 0,
+          "power_mode": "approximate"
         },
         "schema_version": 1
       }
@@ -60,7 +64,8 @@
           "beta": 80,
           "saturation": 100,
           "noise": 0,
-          "fade": 0
+          "fade": 0,
+          "output_gamma": 1.0
         },
         "processing": {
           "device_class": "medium",
@@ -69,7 +74,8 @@
           "limit_input_pixels": true,
           "resize": true,
           "transparency": "reject",
-          "blend_mode": "normal"
+          "blend_mode": "normal",
+          "working_resampler": "nearest"
         },
         "image": {
           "color_space": "srgb",
@@ -93,7 +99,9 @@
           "normalization_floor": 0.0001,
           "gradient_threshold": 0.0001,
           "log_offset": 0.01,
-          "shadow_threshold": 6
+          "shadow_threshold": 6,
+          "detail_level": 0,
+          "power_mode": "approximate"
         },
         "schema_version": 1
       }

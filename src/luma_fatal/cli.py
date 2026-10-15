@@ -39,6 +39,7 @@ def _settings(args: argparse.Namespace) -> Config:
             "resize",
             "transparency",
             "blend_mode",
+            "working_resampler",
         )
         if getattr(args, key) is not None
     }
@@ -69,6 +70,11 @@ def _settings(args: argparse.Namespace) -> Config:
     }
     if args.output_format is not None:
         output["format"] = args.output_format
+    numerics = {
+        name: getattr(args, name)
+        for name in ("detail_level", "power_mode")
+        if getattr(args, name) is not None
+    }
     return replace(
         config,
         filter=args.filter or config.filter,
@@ -76,6 +82,7 @@ def _settings(args: argparse.Namespace) -> Config:
         processing=replace(config.processing, **processing),
         image=replace(config.image, **image),
         output=replace(config.output, **output),
+        numerics=replace(config.numerics, **numerics),
     )
 
 
@@ -222,11 +229,33 @@ def main(argv: list[str] | None = None) -> None:
         )
         for name, default in asdict(FilterParams()).items():
             command.add_argument(
-                "--" + name,
+                "--" + name.replace("_", "-"),
                 type=float,
                 default=None,
-                help=f"Parameter scale 0..100, default {default:g}",
+                help=(
+                    f"Positive output gamma, x^(1/gamma), default {default:g}"
+                    if name == "output_gamma"
+                    else f"Parameter scale 0..100, default {default:g}"
+                ),
             )
+        command.add_argument(
+            "--detail-level",
+            type=int,
+            default=None,
+            help="Number of finest pyramid levels excluded from attenuation",
+        )
+        command.add_argument(
+            "--power-mode",
+            choices=("approximate", "standard"),
+            default=None,
+            help="Power function for attenuation and color recombination",
+        )
+        command.add_argument(
+            "--working-resampler",
+            choices=("nearest", "bilinear", "bicubic"),
+            default=None,
+            help="Resampler used to reduce to effect working resolution",
+        )
         command.add_argument(
             "--device-class", choices=("low", "medium", "high"), default=None
         )
