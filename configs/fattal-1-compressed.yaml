@@ -1,0 +1,48 @@
+# Fattal 1 with smooth shadows and weak deblocking for compressed video.
+schema_version: 1
+filter: fattal1
+parameters:
+  alpha: 1
+  beta: 80
+  saturation: 100
+  noise: 0
+  fade: 0
+  output_gamma: 1.0
+processing:
+  device_class: "medium"
+  max_edge: 1536
+  max_input_pixels: 8000000
+  limit_input_pixels: true
+  resize: true
+  transparency: "reject"
+  blend_mode: "normal"
+  working_resampler: "nearest"
+image:
+  color_space: "srgb"
+  color_backend: "matrix_trc"
+  exif_orientation: "apply"
+  decode_sampling: true
+output:
+  format: "jpeg"
+  jpeg_quality: 100
+  jpeg_subsampling: "420"
+  embed_icc: false
+  jpeg_background: null
+numerics:
+  iterations: 80
+  relaxation: 1.9
+  pyramid_min_size: 32
+  normalization_low: 0.001
+  normalization_high: 0.995
+  normalization_floor: 0.0001
+  gradient_threshold: 0.0001
+  log_offset: 0.01
+  shadow_threshold: 6
+  shadow_softness: 6
+  luminance_mode: rounded
+  detail_level: 0
+  power_mode: "approximate"
+video:
+  crf: 18
+  preset: medium
+  deblock: weak8

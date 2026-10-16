@@ -263,6 +263,26 @@ class OutputConfig:
 
 
 @dataclass(frozen=True)
+class VideoConfig:
+    """Video preprocessing and H.264 export settings."""
+
+    crf: int = 18
+    preset: str = "medium"
+    deblock: str = "off"
+
+    def __post_init__(self):
+        if type(self.crf) is not int or not 0 <= self.crf <= 51:
+            raise ValueError("Video crf must be an integer between 0 and 51")
+        if self.preset not in (
+            "ultrafast", "superfast", "veryfast", "faster", "fast",
+            "medium", "slow", "slower", "veryslow",
+        ):
+            raise ValueError("Unsupported H.264 preset")
+        if self.deblock not in ("off", "weak4", "weak8"):
+            raise ValueError("Video deblock must be off, weak4 or weak8")
+
+
+@dataclass(frozen=True)
 class Config:
     """Complete reusable run configuration with strict sections and defaults."""
 
@@ -273,6 +293,7 @@ class Config:
     output: OutputConfig = field(default_factory=OutputConfig)
     numerics: NumericsConfig = field(default_factory=NumericsConfig)
     schema_version: int = 1
+    video: VideoConfig = field(default_factory=VideoConfig)
 
     def __post_init__(self):
         if type(self.schema_version) is not int or self.schema_version != 1:
@@ -284,6 +305,7 @@ class Config:
             ("image", ImageConfig),
             ("output", OutputConfig),
             ("numerics", NumericsConfig),
+            ("video", VideoConfig),
         ):
             if not isinstance(getattr(self, name), expected):
                 raise ValueError(f"{name} must be a {expected.__name__}")
@@ -298,6 +320,7 @@ class Config:
             "image": ImageConfig,
             "output": OutputConfig,
             "numerics": NumericsConfig,
+            "video": VideoConfig,
         }
         if any(not isinstance(key, str) for key in data):
             raise ValueError("Configuration keys must be strings")

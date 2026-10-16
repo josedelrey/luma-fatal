@@ -7,6 +7,7 @@ from .configuration import (
     NumericsConfig,
     OutputConfig,
     ProcessingConfig,
+    VideoConfig,
 )
 from .filters import fattal1, fattal2
 from .pipeline import apply_filter, process_frames
@@ -18,6 +19,7 @@ __all__ = [
     "NumericsConfig",
     "OutputConfig",
     "ProcessingConfig",
+    "VideoConfig",
     "apply_filter",
     "fattal1",
     "fattal2",
