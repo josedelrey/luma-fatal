@@ -133,8 +133,11 @@ media output. Start at 0.25 and compare moving footage before increasing it.
 
 Cleanup detects smooth regions from decoded source RGB after any FFmpeg
 deblocking/debanding and at the effect's working resolution. It combines
-texture at two scales, strong-edge protection, and variation inside reduced
-pixels so fine texture survives detection downsampling. A soft mask controls
+texture at two scales, abrupt-edge protection, and variation inside reduced
+pixels after subtracting estimated smooth shading. Gradual brightness ramps
+can qualify for cleanup while fine texture survives detection downsampling.
+The edge guard measures changes in the local slope to protect sudden transitions
+in brightness or color. A soft mask controls
 [guided filtering](https://people.csail.mit.edu/kaiming/eccv10/index.html).
 The guide's longest edge is capped at 384 pixels, and a compiled pass upsamples
 the coefficients and applies bounded corrections. Corrected RGB and luminance
