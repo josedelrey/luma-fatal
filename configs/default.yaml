@@ -58,3 +58,4 @@ video:
   crf: 18
   preset: medium
   deblock: off
+  deband: off

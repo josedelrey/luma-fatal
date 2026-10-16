@@ -217,16 +217,21 @@ def _scan_timing(path, stream, executable):
     return rate, count, first
 
 
-def _decode_command(executable, path, stream, deblock="off"):
+def _decode_command(executable, path, stream, deblock="off", deband="off"):
     source_range = "limited" if stream["color_range"] == "tv" else "full"
     conversion = (
         "zscale=matrixin=709:transferin=709:primariesin=709:"
         f"rangein={source_range}:matrix=gbr:transfer=iec61966-2-1:"
         "primaries=709:range=full,format=gbrp,format=rgb24"
     )
+    prefilters = []
     if deblock != "off":
         block = {"weak4": 4, "weak8": 8}[deblock]
-        conversion = f"deblock=filter=weak:block={block}," + conversion
+        prefilters.append(f"deblock=filter=weak:block={block}")
+    if deband == "gentle":
+        prefilters.append("deband=1thr=0.008:2thr=0.008:3thr=0.008:range=8")
+    if prefilters:
+        conversion = ",".join(prefilters) + "," + conversion
     return [
         str(executable), "-v", "error", "-xerror", "-nostdin", "-noautorotate",
         "-i", str(path), "-map", f"0:{stream['index']}", "-an", "-sn", "-dn",
@@ -280,10 +285,11 @@ def process_video(
 ) -> dict:
     """Process tagged BT.709, progressive, square-pixel CFR video into silent MP4.
 
-    FFmpeg must provide zscale and libx264, plus deblock when enabled. Input
+    FFmpeg must provide zscale and libx264, plus optional source filters. Input
     timestamps are validated in a separate streaming pass, then rebased to zero
     without changing cadence.
-    Optional weak deblocking runs on decoded YUV before RGB conversion.
+    Optional weak deblocking and gentle debanding run on decoded YUV before
+    RGB conversion.
     Image preparation/export settings do not apply to video. Frames enter the
     filter as full-range sRGB RGB8. Odd output edges are padded by replication.
     Existing destinations are refused. Failed runs publish no output or sidecar.
@@ -325,7 +331,9 @@ def process_video(
     with tempfile.TemporaryDirectory(prefix=".luma-fatal-", dir=destination.parent) as directory:
         temporary = Path(directory) / "video.mp4"
         temporary_meta = Path(directory) / "video.meta.json"
-        decode = _decode_command(ffmpeg, source, stream, settings.deblock)
+        decode = _decode_command(
+            ffmpeg, source, stream, settings.deblock, settings.deband
+        )
         encode = _encode_command(ffmpeg, temporary, width, height, rate, settings)
         with _process(
             decode, stdout=subprocess.PIPE, stdin=subprocess.DEVNULL

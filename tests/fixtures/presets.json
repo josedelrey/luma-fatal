@@ -54,7 +54,7 @@
           "power_mode": "approximate"
         },
         "schema_version": 1,
-        "video": {"crf": 18, "preset": "medium", "deblock": "off"}
+        "video": {"crf": 18, "preset": "medium", "deblock": "off", "deband": "off"}
       }
     },
     {
@@ -109,7 +109,7 @@
           "power_mode": "approximate"
         },
         "schema_version": 1,
-        "video": {"crf": 18, "preset": "medium", "deblock": "off"}
+        "video": {"crf": 18, "preset": "medium", "deblock": "off", "deband": "off"}
       }
     }
   ],
