@@ -20,7 +20,7 @@ def _reduce(rgb, factor):
     height, width = rgb.shape[:2]
     small = np.empty(((height + factor - 1) // factor,
                       (width + factor - 1) // factor, 3), np.float32)
-    activity = np.zeros(small.shape[:2], np.float32)
+    variance = np.empty(small.shape, np.float32)
     for y in range(small.shape[0]):
         for x in range(small.shape[1]):
             bottom = min((y + 1) * factor, height)
@@ -35,9 +35,45 @@ def _reduce(rgb, factor):
                         total += value
                         squares += value * value
                 small[y, x, c] = total / count
-                deviation = np.sqrt(max(squares / count - (total / count) ** 2, 0.0))
-                activity[y, x] = max(activity[y, x], deviation)
-    return small, activity
+                variance[y, x, c] = max(squares / count - (total / count) ** 2, 0.0)
+    return small, variance
+
+
+@njit(cache=True)
+def _detrended_activity(small, variance, factor, height, width):
+    """Subtract smooth planar shading from within-tile texture energy.
+
+    Neighboring tile means estimate the shading slope. Using those means keeps
+    aliased fine stripes protected even when each tile itself looks linear.
+    Partial border tiles use their actual centers and spatial variances.
+    """
+    activity = np.empty(small.shape[:2], np.float32)
+    for y in range(small.shape[0]):
+        top = max(y - 1, 0)
+        bottom = min(y + 1, small.shape[0] - 1)
+        top_center = (top * factor + min((top + 1) * factor, height) - 1) * 0.5
+        bottom_center = (bottom * factor + min((bottom + 1) * factor, height) - 1) * 0.5
+        tile_height = min((y + 1) * factor, height) - y * factor
+        spatial_y = (tile_height * tile_height - 1) / 12.0
+        for x in range(small.shape[1]):
+            left = max(x - 1, 0)
+            right = min(x + 1, small.shape[1] - 1)
+            left_center = (left * factor + min((left + 1) * factor, width) - 1) * 0.5
+            right_center = (right * factor + min((right + 1) * factor, width) - 1) * 0.5
+            tile_width = min((x + 1) * factor, width) - x * factor
+            spatial_x = (tile_width * tile_width - 1) / 12.0
+            residual = 0.0
+            for c in range(3):
+                dx = 0.0 if left == right else (
+                    (small[y, right, c] - small[y, left, c]) / (right_center - left_center)
+                )
+                dy = 0.0 if top == bottom else (
+                    (small[bottom, x, c] - small[top, x, c]) / (bottom_center - top_center)
+                )
+                shading = dx * dx * spatial_x + dy * dy * spatial_y
+                residual = max(residual, variance[y, x, c] - shading)
+            activity[y, x] = np.sqrt(max(residual, 0.0))
+    return activity
 
 
 @njit(cache=True)
@@ -117,15 +153,19 @@ class SourceCleanup:
     def __call__(self, rgb, reference_luminance):
         start = time.perf_counter()
         factor = max(1, (max(rgb.shape[:2]) + 383) // 384)
-        small, within_activity = _reduce(rgb, factor)
+        small, variance_rgb = _reduce(rgb, factor)
+        within_activity = _detrended_activity(
+            small, variance_rgb, factor, rgb.shape[0], rgb.shape[1]
+        )
         guide_rgb = gaussian_filter(small, sigma=(0.5, 0.5, 0), mode="reflect")
         fine = guide_rgb - gaussian_filter(guide_rgb, sigma=(1, 1, 0), mode="reflect")
         coarse = guide_rgb - gaussian_filter(guide_rgb, sigma=(2, 2, 0), mode="reflect")
         fine_activity = np.sqrt(np.maximum(uniform_filter(fine * fine, (3, 3, 1)), 0)).max(2)
         coarse_activity = np.sqrt(np.maximum(uniform_filter(coarse * coarse, (3, 3, 1)), 0)).max(2)
-        edge = np.maximum(
-            np.abs(np.diff(guide_rgb, axis=0, append=guide_rgb[-1:])),
-            np.abs(np.diff(guide_rgb, axis=1, append=guide_rgb[:, -1:])),
+        # High-pass gradients reject abrupt edges without penalizing a smooth slope.
+        edge = np.float32(2) * np.maximum(
+            np.abs(np.diff(fine, axis=0, append=fine[-1:])),
+            np.abs(np.diff(fine, axis=1, append=fine[:, -1:])),
         ).max(2)
         edge_guard = ((1 - _smoothstep(3, 10, maximum_filter(edge, 3)))
                       * (1 - _smoothstep(1, 5, within_activity)))

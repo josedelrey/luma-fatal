@@ -50,6 +50,43 @@ def test_reduced_detection_preserves_subpixel_texture_and_bounds_changes():
     np.testing.assert_array_equal(rgb, snapshot)
 
 
+@pytest.mark.parametrize("width", [320, 640, 1280])
+@pytest.mark.parametrize("transpose", [False, True])
+def test_smooth_shading_qualifies_at_multiple_detection_scales(width, transpose):
+    yy, xx = np.indices((128, width))
+    start = width // 2 - 45
+    gray = np.rint(np.clip(40 + 2 * (xx - start) + yy / 16, 40, 220)).astype(np.uint8)
+    rgb = np.repeat(gray[..., None], 3, 2)
+    if transpose:
+        rgb = rgb.transpose(1, 0, 2).copy()
+    cleanup = SourceCleanup(0.25)
+    cleanup(rgb, reference(rgb))
+    factor = max(1, (width + 383) // 384)
+    mask = cleanup.mask.T if transpose else cleanup.mask
+    interior = mask[8:-8, (start + 24) // factor:(start + 64) // factor]
+    assert interior.mean() > 0.9
+
+
+def test_gradient_detrending_preserves_stripes_hidden_by_area_reduction():
+    yy, xx = np.indices((128, 640))
+    rgb = np.repeat(np.where(xx % 2, 80, 140).astype(np.uint8)[..., None], 3, 2)
+    cleanup = SourceCleanup(0.25)
+    cleaned, luminance = cleanup(rgb, reference(rgb))
+    assert cleanup.mask.max() == 0
+    np.testing.assert_array_equal(cleaned, rgb)
+    np.testing.assert_array_equal(luminance, reference(rgb))
+
+
+def test_color_edges_are_protected_at_matching_luminance():
+    rgb = np.empty((64, 128, 3), np.uint8)
+    rgb[:, :64] = [80, 100, 100]
+    rgb[:, 64:] = [139, 70, 100]
+    assert np.unique(luminance_u8(rgb)).size == 1
+    cleanup = SourceCleanup(0.25)
+    cleanup(rgb, reference(rgb))
+    assert cleanup.mask[:, 62:65].max() == 0
+
+
 def test_fractional_corrections_stay_bounded_without_byte_rounding():
     yy, xx = np.indices((65, 97))
     gray = (60 + xx // 8 + (yy // 9) % 2).astype(np.uint8)
