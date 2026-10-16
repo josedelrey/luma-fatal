@@ -184,6 +184,37 @@ def _evaluate(args: argparse.Namespace) -> dict:
     return summary
 
 
+def _show_image(record: dict) -> None:
+    output = Path(record["output"])
+    width, height = record["dimensions"]
+    print(f"Processed image with {record['filter']}: {output}")
+    print(f"  Size: {width} × {height} | Time: {record['seconds']:.2f} s")
+    print(f"  Details: {output.with_suffix('.meta.json')}")
+
+
+def _show_video(record: dict) -> None:
+    output = Path(record["output"])
+    width, height = record["dimensions"]
+    print(f"Processed video with Fattal {record['filter'][-1]}: {output}")
+    print(
+        f"  {record['frame_count']} frames at {record['frame_rate']} fps"
+        f" | {width} × {height} | Run time: {record['seconds']:.2f} s"
+    )
+    print(f"  Details: {output.with_suffix('.meta.json')}")
+
+
+def _show_comparison(record: dict, output: Path, original: Path | None) -> None:
+    print(f"Compared: {record['reference']} and {record['candidate']}")
+    print(
+        f"  Mean absolute error: {record['mae']:.3f} / 255"
+        f" | SSIM: {record['ssim']:.4f}"
+        f" | Exact pixels: {record['exact_pixel_fraction']:.1%}"
+    )
+    print(f"  Details: {output / 'metrics.json'}")
+    if original is not None:
+        print(f"  Difference panel: {output / 'differences.png'}")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description="Luma Fatal gradient-domain image and video processing. " + STATUS
@@ -248,6 +279,11 @@ def main(argv: list[str] | None = None) -> None:
         "config", help="Show defaults or write a reusable configuration file"
     )
     configuration.add_argument("--output", type=Path)
+    for command in (apply, video, compare, configuration):
+        command.add_argument(
+            "--json", action="store_true",
+            help="Print the full machine-readable result to stdout",
+        )
     evaluate.add_argument(
         "--filter", choices=["fattal1", "fattal2", "both"], default=None
     )
@@ -381,18 +417,28 @@ def main(argv: list[str] | None = None) -> None:
                         args.input, args.output, config=config, config_path=args.config
                     )
                 ]
-            print(json.dumps(records, indent=2))
+            if args.json:
+                print(json.dumps(records, indent=2))
+            else:
+                for record in records:
+                    _show_image(record)
         elif args.command == "video":
+            config = _settings(args)
+            if not args.json:
+                print(f"Processing video: {args.input} -> {args.output}", flush=True)
             record = process_video(
                 args.input,
                 args.output,
-                config=_settings(args),
+                config=config,
                 config_path=args.config,
                 progress=args.progress,
                 ffmpeg=args.ffmpeg,
                 ffprobe=args.ffprobe,
             )
-            print(json.dumps(record, indent=2))
+            if args.json:
+                print(json.dumps(record, indent=2))
+            else:
+                _show_video(record)
         elif args.command == "config":
             config = Config()
             if args.output:
@@ -416,20 +462,24 @@ def main(argv: list[str] | None = None) -> None:
                     args.output.write_text(config.to_toml(), encoding="utf-8")
                 else:
                     _write_json(args.output, config.to_dict())
-            print(json.dumps(config.to_dict(), indent=2))
+            if args.json:
+                print(json.dumps(config.to_dict(), indent=2))
+            elif args.output:
+                print(f"Default configuration written to {args.output}")
+            else:
+                print(config.to_yaml(), end="")
         elif args.command == "compare":
-            print(
-                json.dumps(
-                    _comparison(
-                        args.reference,
-                        args.candidate,
-                        args.original,
-                        args.output,
-                        args.gain,
-                    ),
-                    indent=2,
-                )
+            record = _comparison(
+                args.reference,
+                args.candidate,
+                args.original,
+                args.output,
+                args.gain,
             )
+            if args.json:
+                print(json.dumps(record, indent=2))
+            else:
+                _show_comparison(record, args.output, args.original)
         elif args.command == "probes":
             result = generate_probes(args.output, args.size, args.seed)
             print(f"{len(result['probes'])} probes written to {args.output}")
@@ -438,5 +488,6 @@ def main(argv: list[str] | None = None) -> None:
             print(
                 f"{result['compared_count']} compared, {result['missing_count']} missing references"
             )
+            print(f"  Details: {args.output / 'evaluation.json'}")
     except (ValueError, OSError) as error:
         parser.error(str(error))
