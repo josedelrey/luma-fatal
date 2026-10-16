@@ -33,10 +33,22 @@ def scalar_math_f32(source: F32, exponential: bool) -> F32:
 def fast_pow64(base: ArrayLike, exponent: float) -> NDArray[np.float64]:
     """Approximate a power using an affine transform of the float64 high word."""
     value = np.ascontiguousarray(base, dtype=np.float64)
-    high = (value.view(np.uint64) >> np.uint64(32)).astype(np.int64)
-    word = np.trunc(np.float64(exponent) * (high - _BIAS) + _BIAS).astype(np.int64)
-    bits = word.astype(np.uint64) << np.uint64(32)
-    return bits.view(np.float64)
+    return _fast_pow64_values(value, np.float64(exponent))
+
+
+@njit(cache=True)
+def _fast_pow64_values(
+    value: NDArray[np.float64], exponent: np.float64
+) -> NDArray[np.float64]:
+    """Transform high words in one pass without intermediate full-size arrays."""
+    result = np.empty(value.shape, dtype=np.float64)
+    source = value.view(np.uint64).ravel()
+    output = result.view(np.uint64).ravel()
+    for index in range(source.size):
+        high = np.int64(source[index] >> np.uint64(32))
+        word = np.int64(np.trunc(exponent * (high - _BIAS) + _BIAS))
+        output[index] = np.uint64(word) << np.uint64(32)
+    return result
 
 
 def power64(
