@@ -9,8 +9,7 @@ import pytest
 
 from luma_fatal import FilterParams, apply_filter
 from luma_fatal.core import _pyramid, _phi, _divergence, _sor, _normalize, _recombine
-from luma_fatal.numerics import luminance_u8
-from luma_fatal.numerics import scalar_math_f32
+from luma_fatal.numerics import fast_pow64, luminance_u8, scalar_math_f32
 from luma_fatal.probes import _probe_arrays
 
 
@@ -29,6 +28,33 @@ def test_scalar_math_matches_reference_bits(trial):
     output = scalar_math_f32(inputs, trial["function"] == "expf")
     assert output.dtype == np.float32
     np.testing.assert_array_equal(output.view(np.uint32), expected)
+
+
+@pytest.mark.parametrize(
+    "exponent,expected_bits",
+    [
+        (0.75, [
+            "0ffbc49f00000000", "6ffbc49f00000000", "3f4f6dc900000000",
+            "3fd7c49f00000000", "3fe3c49f00000000", "3fefc49f00000000",
+            "3ffbc49f00000000", "4016c49f00000000", "9fefc49f00000000",
+            "6fefc49f00000000", "6ff5c49f00000000",
+        ]),
+        (-0.5, [
+            "5fe69bbe00000000", "1fe69bbe00000000", "4059804d00000000",
+            "3ffe9bbe00000000", "3ff69bbe00000000", "3fee9bbe00000000",
+            "3fe69bbe00000000", "3fd49bbe00000000", "ffee9bbf00000000",
+            "1fee9bbe00000000", "1fea9bbe00000000",
+        ]),
+    ],
+)
+def test_affine_power_matches_frozen_high_word_bits(exponent, expected_bits):
+    values = np.array(
+        [0, -0.0, 1e-4, 0.25, 0.5, 1, 2, 10, -1, np.inf, np.nan],
+        np.float64,
+    )
+    actual = fast_pow64(values, exponent)
+    expected = np.array([int(bits, 16) for bits in expected_bits], np.uint64)
+    np.testing.assert_array_equal(actual.view(np.uint64), expected)
 
 
 @pytest.mark.parametrize(
