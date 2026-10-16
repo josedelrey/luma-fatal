@@ -153,6 +153,7 @@ New controls are opt-in and retain the original preset output when disabled.
 | `numerics.detail_level` | `0` | Exclude this many finest pyramid levels from attenuation |
 | `numerics.power_mode` | `approximate` | Select the current approximation or `standard` NumPy exponentiation |
 | `numerics.shadow_softness` | `0` | Smooth the original shadow cutoff with a transition half-width of 1–255 luminance levels |
+| `numerics.luminance_mode` | `rounded` | Use `fractional` to retain sub-byte luminance through the filter |
 | `processing.working_resampler` | `nearest` | Select `nearest`, `bilinear`, or `bicubic` working-resolution sampling |
 | `parameters.output_gamma` | `1.0` | Apply the curve `x^(1/gamma)` to clipped, normalized filtered RGB |
 
@@ -184,6 +185,14 @@ uses clipped filtered RGB after output gamma and before quantization and fade.
 It applies at working resolution in the bounded route, including video frames.
 This control changes shadow handling while retaining the existing texture
 calculation. It does not denoise frames or suppress codec blocks.
+
+`luminance_mode: fractional` keeps the same RGB weights but omits the final
+rounding to integer luminance before the logarithm. The decoded RGB input is
+still 8-bit, so this option cannot recover detail lost in the source video.
+It is an experiment for measuring the filter's own quantization effects.
+The `rounded` mode retains the reference behavior. For a direct video
+comparison with the smooth shadow transition, use
+`--luminance-mode fractional --shadow-softness 6` with a reference preset.
 
 For example, try a half-width of 6 on a video with either reference preset:
 

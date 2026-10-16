@@ -73,7 +73,7 @@ def _settings(args: argparse.Namespace) -> Config:
         output["format"] = args.output_format
     numerics = {
         name: getattr(args, name)
-        for name in ("detail_level", "power_mode", "shadow_softness")
+        for name in ("detail_level", "power_mode", "shadow_softness", "luminance_mode")
         if getattr(args, name) is not None
     }
     return replace(
@@ -269,6 +269,12 @@ def main(argv: list[str] | None = None) -> None:
             type=int,
             default=None,
             help="Shadow transition half-width in luminance levels, 0 keeps the reference cutoff",
+        )
+        command.add_argument(
+            "--luminance-mode",
+            choices=("rounded", "fractional"),
+            default=None,
+            help="Use rounded reference luminance or unrounded fractional luminance",
         )
         command.add_argument(
             "--working-resampler",

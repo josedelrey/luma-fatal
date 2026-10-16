@@ -19,7 +19,10 @@ def test_experimental_configuration_round_trips(suffix, tmp_path):
     config = Config(
         parameters=FilterParams(output_gamma=1.6),
         processing=ProcessingConfig(working_resampler="bicubic"),
-        numerics=NumericsConfig(detail_level=2, power_mode="standard", shadow_softness=6),
+        numerics=NumericsConfig(
+            detail_level=2, power_mode="standard", shadow_softness=6,
+            luminance_mode="fractional",
+        ),
     )
     path = tmp_path / f"settings.{suffix}"
     content = {
@@ -39,6 +42,7 @@ def test_experimental_configuration_round_trips(suffix, tmp_path):
     ]
     + [{"numerics": {"detail_level": value}} for value in (-1, True, 1.5)]
     + [{"numerics": {"power_mode": value}} for value in (None, True, "exact")]
+    + [{"numerics": {"luminance_mode": value}} for value in (None, True, "float")]
     + [{"processing": {"working_resampler": value}} for value in (None, "lanczos")],
 )
 def test_invalid_experimental_controls_are_rejected(values):
@@ -158,7 +162,9 @@ def test_bicubic_working_resampler_clips_step_edge_overshoot():
 
 @pytest.mark.parametrize("variant", [1, 2])
 @pytest.mark.parametrize("max_edge", [None, 40])
-@pytest.mark.parametrize("control", ["detail_level", "power_mode", "output_gamma"])
+@pytest.mark.parametrize(
+    "control", ["detail_level", "power_mode", "output_gamma", "luminance_mode"]
+)
 def test_experiments_change_pixels_in_both_resolution_routes(
     variant, max_edge, control
 ):
@@ -179,6 +185,9 @@ def test_experiments_change_pixels_in_both_resolution_routes(
         ),
         "output_gamma": replace(
             config, parameters=replace(config.parameters, output_gamma=1.8)
+        ),
+        "luminance_mode": replace(
+            config, numerics=replace(config.numerics, luminance_mode="fractional")
         ),
     }
     reference = apply_filter(pixels, config=config)
@@ -228,8 +237,9 @@ def test_gamma_is_applied_before_fade_and_bypassed_at_fade_100(max_edge):
 
 
 @pytest.mark.parametrize("shadow_softness", [0, 6])
+@pytest.mark.parametrize("luminance_mode", ["rounded", "fractional"])
 def test_cli_overrides_experimental_settings_and_records_resolved_values(
-    tmp_path, capsys, shadow_softness
+    tmp_path, capsys, shadow_softness, luminance_mode
 ):
     pixels = np.random.default_rng(27).integers(0, 256, (67, 91, 3), np.uint8)
     source, output = tmp_path / "source.png", tmp_path / "output.png"
@@ -238,7 +248,8 @@ def test_cli_overrides_experimental_settings_and_records_resolved_values(
         parameters=FilterParams(fade=0, output_gamma=0.8),
         processing=ProcessingConfig(max_edge=40, working_resampler="bicubic"),
         numerics=NumericsConfig(
-            iterations=7, pyramid_min_size=8, detail_level=2, shadow_softness=3
+            iterations=7, pyramid_min_size=8, detail_level=2, shadow_softness=3,
+            luminance_mode="fractional",
         ),
     )
     path = tmp_path / "settings.yaml"
@@ -249,6 +260,7 @@ def test_cli_overrides_experimental_settings_and_records_resolved_values(
             "--output-format", "png", "--output-gamma", "1.6", "--detail-level", "1",
             "--power-mode", "standard", "--working-resampler", "bilinear",
             "--shadow-softness", str(shadow_softness),
+            "--luminance-mode", luminance_mode,
         ]
     )
     record = json.loads(output.with_suffix(".meta.json").read_text())
@@ -258,6 +270,7 @@ def test_cli_overrides_experimental_settings_and_records_resolved_values(
     assert resolved.numerics == replace(
         config.numerics, detail_level=1, power_mode="standard",
         shadow_softness=shadow_softness,
+        luminance_mode=luminance_mode,
     )
     with Image.open(output) as image:
         np.testing.assert_array_equal(

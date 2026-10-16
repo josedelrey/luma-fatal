@@ -7,7 +7,9 @@ import warnings
 import numpy as np
 from numba import njit
 
-from .numerics import gradient_scale, luminance_u8, power64, scalar_math_f32
+from .numerics import (
+    gradient_scale, luminance_fractional, luminance_u8, power64, scalar_math_f32,
+)
 from .configuration import FilterParams, NumericsConfig
 
 
@@ -311,7 +313,10 @@ def apply_core(
             )
         else:
             rgb = np.ascontiguousarray(array[..., :3])
-            luminance = luminance_u8(rgb).astype(np.float32) * np.float32(1 / 255)
+            if numerics.luminance_mode == "fractional":
+                luminance = luminance_fractional(rgb)
+            else:
+                luminance = luminance_u8(rgb).astype(np.float32) * np.float32(1 / 255)
             maximum = np.max(luminance)
             if maximum > 0:
                 # Add the offset in float64, then narrow before the scalar logarithm.

@@ -7,7 +7,9 @@ from PIL import Image
 
 from luma_fatal import FilterParams, apply_filter, fattal1, fattal2
 from luma_fatal.core import _pyramid, _normalize
-from luma_fatal.numerics import fast_pow, gradient_scale, luminance_u8
+from luma_fatal.numerics import (
+    fast_pow, gradient_scale, luminance_fractional, luminance_u8,
+)
 
 
 FADE_CASES = json.loads(
@@ -104,6 +106,14 @@ def test_fixed_point_luminance_known_primaries():
         [[[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 255]]], np.uint8
     )
     np.testing.assert_array_equal(luminance_u8(image), [[76, 150, 29, 255]])
+
+
+def test_fractional_luminance_uses_reference_weights_without_byte_rounding():
+    image = np.array([[[1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 1]]], np.uint8)
+    expected = np.array([[4899, 9617, 1868, 16384]], np.float32)
+    expected /= np.float32(16384 * 255)
+    np.testing.assert_array_equal(luminance_fractional(image), expected)
+    np.testing.assert_array_equal(luminance_u8(image), [[0, 1, 0, 1]])
 
 
 def test_power_preserves_affine_approximation():

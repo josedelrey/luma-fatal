@@ -119,9 +119,12 @@ def test_decoder_handles_partial_reads_and_truncated_frames():
 
 
 @pytest.mark.parametrize("filter_name", ["fattal1", "fattal2"])
-@pytest.mark.parametrize("shadow_softness", [0, 6])
+@pytest.mark.parametrize(
+    "shadow_softness,luminance_mode",
+    [(0, "rounded"), (6, "rounded"), (6, "fractional")],
+)
 def test_video_matches_image_processing_and_preserves_timing(
-    tmp_path, tools, filter_name, shadow_softness,
+    tmp_path, tools, filter_name, shadow_softness, luminance_mode,
 ):
     source = make_clip(tmp_path / "synthetic.mkv", tools, audio=True, offset=2)
     original = source.read_bytes()
@@ -129,7 +132,10 @@ def test_video_matches_image_processing_and_preserves_timing(
     config = Config(
         filter=filter_name, parameters=FilterParams(fade=0),
         processing=ProcessingConfig(max_edge=24),
-        numerics=NumericsConfig(iterations=11, shadow_softness=shadow_softness),
+        numerics=NumericsConfig(
+            iterations=11, shadow_softness=shadow_softness,
+            luminance_mode=luminance_mode,
+        ),
     )
     expected = hashlib.sha256()
     for frame in reference_rgb(source, tools, 47, 35):
