@@ -42,3 +42,7 @@ numerics:
   luminance_mode: rounded
   detail_level: 0
   power_mode: "approximate"
+video:
+  crf: 18
+  preset: medium
+  deblock: off

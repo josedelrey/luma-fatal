@@ -15,6 +15,7 @@ from luma_fatal import (
     ImageConfig,
     OutputConfig,
     ProcessingConfig,
+    VideoConfig,
     apply_filter,
     fattal2,
 )
@@ -54,6 +55,8 @@ def test_device_and_custom_limits(device, edge):
         {"output": {"jpeg_background": [0, 256, 0]}},
         {"image": {"color_space": ["srgb"]}},
         {"filter": "fattal3"},
+        {"video": {"deblock": "strong"}},
+        {"video": {"crf": True}},
     ],
 )
 def test_invalid_config_is_rejected(values):
@@ -62,7 +65,10 @@ def test_invalid_config_is_rejected(values):
 
 
 def test_config_round_trip_and_checked_in_defaults(tmp_path):
-    config = Config(output=OutputConfig(jpeg_background=(10, 20, 30)))
+    config = Config(
+        output=OutputConfig(jpeg_background=(10, 20, 30)),
+        video=VideoConfig(deblock="weak8"),
+    )
     for suffix, content in [
         ("toml", config.to_toml()),
         ("json", json.dumps(config.to_dict())),

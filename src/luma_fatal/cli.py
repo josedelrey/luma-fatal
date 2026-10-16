@@ -14,7 +14,7 @@ from .configuration import Config, FilterParams, resolve_config
 from .images import process_image, STATUS, _write_json, _digest
 from .probes import generate_probes
 from .validation import compare_images, write_difference_panel
-from .video import VideoConfig, process_video
+from .video import process_video
 
 
 def _settings(args: argparse.Namespace) -> Config:
@@ -76,6 +76,11 @@ def _settings(args: argparse.Namespace) -> Config:
         for name in ("detail_level", "power_mode", "shadow_softness", "luminance_mode")
         if getattr(args, name) is not None
     }
+    video = {
+        name: getattr(args, name)
+        for name in ("crf", "preset", "deblock")
+        if getattr(args, name, None) is not None
+    }
     return replace(
         config,
         filter=args.filter or config.filter,
@@ -84,6 +89,7 @@ def _settings(args: argparse.Namespace) -> Config:
         image=replace(config.image, **image),
         output=replace(config.output, **output),
         numerics=replace(config.numerics, **numerics),
+        video=replace(config.video, **video),
     )
 
 
@@ -196,8 +202,12 @@ def main(argv: list[str] | None = None) -> None:
     video.add_argument("input", type=Path)
     video.add_argument("output", type=Path)
     video.add_argument("--filter", choices=("fattal1", "fattal2"), default=None)
-    video.add_argument("--crf", type=int, default=18)
-    video.add_argument("--preset", default="medium", help="H.264 encoder speed preset")
+    video.add_argument("--crf", type=int, default=None)
+    video.add_argument("--preset", default=None, help="H.264 encoder speed preset")
+    video.add_argument(
+        "--deblock", choices=("off", "weak4", "weak8"), default=None,
+        help="Optional weak source deblocking before the Fattal filter",
+    )
     video.add_argument(
         "--ffmpeg", default="ffmpeg", help="FFmpeg executable with zscale and libx264"
     )
@@ -366,7 +376,6 @@ def main(argv: list[str] | None = None) -> None:
                 args.output,
                 config=_settings(args),
                 config_path=args.config,
-                video_config=VideoConfig(crf=args.crf, preset=args.preset),
                 ffmpeg=args.ffmpeg,
                 ffprobe=args.ffprobe,
             )

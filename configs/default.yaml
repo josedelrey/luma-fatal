@@ -54,3 +54,7 @@ numerics:
   detail_level: 0
   power_mode: approximate
 schema_version: 1
+video:
+  crf: 18
+  preset: medium
+  deblock: off

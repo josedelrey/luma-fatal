@@ -1,6 +1,7 @@
 """Complete image presets remain reproducible with local Python dependencies."""
 
 from copy import deepcopy
+from dataclasses import replace
 import hashlib
 import json
 from pathlib import Path
@@ -25,6 +26,21 @@ def test_frozen_recipes_are_complete_and_independent_of_device_defaults(monkeypa
         assert config.processing.effective_max_input_pixels == 8_000_000
         assert config.image.color_backend == "matrix_trc"
         assert config.output.jpeg_background is None
+        assert config.video.deblock == "off"
+
+
+@pytest.mark.parametrize("variant", [1, 2])
+def test_compressed_presets_only_change_shadow_blending_and_video_deblocking(variant):
+    root = Path(__file__).resolve().parents[1]
+    reference = configuration.Config.load(root / "configs" / f"fattal-{variant}.yaml")
+    compressed = configuration.Config.load(
+        root / "configs" / f"fattal-{variant}-compressed.yaml"
+    )
+    assert compressed == replace(
+        reference,
+        numerics=replace(reference.numerics, shadow_softness=6),
+        video=replace(reference.video, deblock="weak8"),
+    )
 
 
 def test_bundled_regressions_run_without_external_commands(monkeypatch, tmp_path):

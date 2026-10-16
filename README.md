@@ -66,6 +66,18 @@ dependencies are needed.
 uv run --locked luma-fatal video local_inputs/input.mp4 outputs/stylized.mp4 --config configs/fattal-1.yaml
 ```
 
+For compressed inputs, the paired presets enable smooth shadows and weak
+deblocking while retaining the original Fattal parameters:
+
+```bash
+uv run --locked luma-fatal video local_inputs/videos/four-people.mp4 outputs/four-people-compressed.mp4 --config configs/fattal-1-compressed.yaml
+```
+
+Use `configs/fattal-2-compressed.yaml` for Fattal 2. The original preset files
+pin the previous shadow and deblocking settings. The compressed presets retain
+rounded luminance because the fractional-luminance experiment gave little
+visible improvement to the block patches.
+
 The first video adapter supports one progressive, square-pixel, constant-frame-rate
 video stream with explicit BT.709 matrix, transfer, primaries and range tags.
 Inputs must use opaque 8-bit planar YUV 4:2:0, 4:2:2 or 4:4:4. Untagged color,
@@ -85,22 +97,26 @@ Odd processed dimensions are padded at the right and bottom by repeating edge
 pixels to make the H.264 YUV420P output dimensions even.
 
 Use `--crf` (default 18) and `--preset` (default `medium`) to control H.264 export.
+For blocky sources, `--deblock weak8` applies FFmpeg's weak deblocking to
+8-pixel boundaries before color conversion and filtering. `weak4` uses 4-pixel
+boundaries. This is video-only and defaults to `off`. Deblocking can soften
+detail, and its fixed grid may miss blocks from variable-size codecs.
 Existing output files or metadata sidecars are refused. Each successful run writes
 a `.meta.json` sidecar with resolved settings, color/timing policies, dimensions,
 frame count, hashes, dependency/tool versions and implementation fingerprints.
 Encoded video bytes can differ between FFmpeg versions and platforms.
 
-The Python API is available from `luma_fatal.video`:
+The Python API reads video settings from the configuration. Passing a
+`VideoConfig` to `process_video` explicitly overrides those settings:
 
 ```python
 from luma_fatal import Config
-from luma_fatal.video import VideoConfig, process_video
+from luma_fatal.video import process_video
 
 record = process_video(
     "local_inputs/input.mp4",
     "outputs/stylized.mp4",
     config=Config.load("configs/fattal-1.yaml"),
-    video_config=VideoConfig(crf=18, preset="medium"),
 )
 ```
 
@@ -115,6 +131,8 @@ the configuration file. The bundled configurations are:
 | [`configs/high.yaml`](configs/high.yaml) | General defaults with a 12 MP input cap and 2048-pixel working edge |
 | [`configs/fattal-1.yaml`](configs/fattal-1.yaml) | Complete Fattal 1 reference preset with fade 0 |
 | [`configs/fattal-2.yaml`](configs/fattal-2.yaml) | Complete Fattal 2 reference preset with fade 0 |
+| [`configs/fattal-1-compressed.yaml`](configs/fattal-1-compressed.yaml) | Fattal 1 with smooth shadows and weak video deblocking |
+| [`configs/fattal-2-compressed.yaml`](configs/fattal-2-compressed.yaml) | Fattal 2 with smooth shadows and weak video deblocking |
 
 `alpha`, `beta`, `saturation`, `noise`, and `fade` use a 0–100 scale, with `alpha`
 strictly positive. `alpha` and `beta` control gradient attenuation, `saturation`

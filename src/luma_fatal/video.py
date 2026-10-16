@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from fractions import Fraction
 import hashlib
 from importlib.metadata import version
@@ -19,26 +19,9 @@ import time
 import numpy as np
 
 from . import __version__
-from .configuration import Config, resolve_config
+from .configuration import Config, VideoConfig, resolve_config
 from .pipeline import process_frames
 from .processing import input_size
-
-
-@dataclass(frozen=True)
-class VideoConfig:
-    """H.264/MP4 export settings. Output is always silent BT.709 YUV420P."""
-
-    crf: int = 18
-    preset: str = "medium"
-
-    def __post_init__(self):
-        if type(self.crf) is not int or not 0 <= self.crf <= 51:
-            raise ValueError("Video crf must be an integer between 0 and 51")
-        if self.preset not in (
-            "ultrafast", "superfast", "veryfast", "faster", "fast",
-            "medium", "slow", "slower", "veryslow",
-        ):
-            raise ValueError("Unsupported H.264 preset")
 
 
 def _digest(path):
@@ -234,16 +217,20 @@ def _scan_timing(path, stream, executable):
     return rate, count, first
 
 
-def _decode_command(executable, path, stream):
+def _decode_command(executable, path, stream, deblock="off"):
     source_range = "limited" if stream["color_range"] == "tv" else "full"
+    conversion = (
+        "zscale=matrixin=709:transferin=709:primariesin=709:"
+        f"rangein={source_range}:matrix=gbr:transfer=iec61966-2-1:"
+        "primaries=709:range=full,format=gbrp,format=rgb24"
+    )
+    if deblock != "off":
+        block = {"weak4": 4, "weak8": 8}[deblock]
+        conversion = f"deblock=filter=weak:block={block}," + conversion
     return [
         str(executable), "-v", "error", "-xerror", "-nostdin", "-noautorotate",
         "-i", str(path), "-map", f"0:{stream['index']}", "-an", "-sn", "-dn",
-        "-vf", (
-            "zscale=matrixin=709:transferin=709:primariesin=709:"
-            f"rangein={source_range}:matrix=gbr:transfer=iec61966-2-1:"
-            "primaries=709:range=full,format=gbrp,format=rgb24"
-        ),
+        "-vf", conversion,
         "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1",
     ]
 
@@ -293,8 +280,10 @@ def process_video(
 ) -> dict:
     """Process tagged BT.709, progressive, square-pixel CFR video into silent MP4.
 
-    FFmpeg must provide zscale and libx264. Input timestamps are validated in a
-    separate streaming pass, then rebased to zero without changing cadence.
+    FFmpeg must provide zscale and libx264, plus deblock when enabled. Input
+    timestamps are validated in a separate streaming pass, then rebased to zero
+    without changing cadence.
+    Optional weak deblocking runs on decoded YUV before RGB conversion.
     Image preparation/export settings do not apply to video. Frames enter the
     filter as full-range sRGB RGB8. Odd output edges are padded by replication.
     Existing destinations are refused. Failed runs publish no output or sidecar.
@@ -317,7 +306,7 @@ def process_video(
     )
     if config.filter == "both":
         raise ValueError("process_video requires one filter per output")
-    settings = VideoConfig() if video_config is None else video_config
+    settings = config.video if video_config is None else video_config
     if not isinstance(settings, VideoConfig):
         raise ValueError("video_config must be a VideoConfig")
     stream = _probe(source, ffprobe)
@@ -336,7 +325,7 @@ def process_video(
     with tempfile.TemporaryDirectory(prefix=".luma-fatal-", dir=destination.parent) as directory:
         temporary = Path(directory) / "video.mp4"
         temporary_meta = Path(directory) / "video.meta.json"
-        decode = _decode_command(ffmpeg, source, stream)
+        decode = _decode_command(ffmpeg, source, stream, settings.deblock)
         encode = _encode_command(ffmpeg, temporary, width, height, rate, settings)
         with _process(
             decode, stdout=subprocess.PIPE, stdin=subprocess.DEVNULL
