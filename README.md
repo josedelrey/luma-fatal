@@ -49,6 +49,8 @@ uv run --locked luma-fatal apply tests/fixtures/color/noise-display-p3.jpg outpu
 Replace the input path with your own image when needed. Each command writes the
 processed image and a `.meta.json` sidecar containing configuration, dimensions,
 color conversion details, dependency versions, and input/output hashes.
+The terminal prints the output path, size, run time, and metadata path. Add
+`--json` to print the full run record for scripts.
 Output directories are created automatically. The input file cannot be used
 as the output path.
 
@@ -88,9 +90,10 @@ second and an estimated time remaining:
 uv run --locked luma-fatal video local_inputs/videos/tears-of-steel.mp4 outputs/tears-of-steel-fattal-1-compressed.mp4 --config configs/fattal-1-compressed.yaml --progress
 ```
 
-The progress bar reports filtered frames on stderr. A JSON run record is printed
-to stdout when encoding and verification finish. Use a new output filename for
-each run, since existing outputs are refused.
+The progress bar reports filtered frames on stderr. The terminal reports the
+output path, frame count, size, run time, and metadata path when processing
+finishes. Add `--json` to print the full run record for scripts. Use a new output
+filename for each run, since existing outputs are refused.
 
 The first video adapter supports one progressive, square-pixel, constant-frame-rate
 video stream with explicit BT.709 matrix, transfer, primaries and range tags.
@@ -139,6 +142,11 @@ can qualify for cleanup while fine texture survives detection downsampling.
 The edge guard measures changes in the local slope to protect sudden transitions
 in brightness or color. A soft mask controls
 [guided filtering](https://people.csail.mit.edu/kaiming/eccv10/index.html).
+Local cleanup strength is the requested strength multiplied by the continuous
+mask weight. Smooth areas receive more treatment, texture receives less, and
+intermediate areas receive partial treatment. Smooth threshold curves, guided
+mask refinement and bilinear mask upsampling soften transitions between them.
+RGB and luminance corrections are blended without rounding intermediate values.
 The guide's longest edge is capped at 384 pixels, and a compiled pass upsamples
 the coefficients and applies bounded corrections. Corrected RGB and luminance
 remain floating point through the effect to avoid adding byte-quantization bands.

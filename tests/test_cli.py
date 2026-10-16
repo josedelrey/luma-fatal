@@ -19,6 +19,11 @@ def test_apply_preserves_source_and_records_provenance(tmp_path, capsys):
     make_input(source)
     original = source.read_bytes()
     main(["apply", str(source), str(destination), "--filter", "fattal2", "--fade", "0"])
+    output = capsys.readouterr().out
+    assert "Processed image with Fattal 2" in output
+    assert str(destination) in output
+    assert str(destination.with_suffix(".meta.json")) in output
+    assert "implementation_sources_sha256" not in output
     metadata = json.loads(destination.with_suffix(".meta.json").read_text())
     assert metadata["source_sha256"] == hashlib.sha256(original).hexdigest()
     assert (
@@ -116,3 +121,25 @@ def test_compare_identical_images_serializes_infinite_psnr(tmp_path, capsys):
     assert report["mae"] == 0
     assert report["psnr_db"] is None and report["psnr_infinite"] is True
     assert (output / "differences.png").exists()
+    message = capsys.readouterr().out
+    assert "Mean absolute error: 0.000 / 255" in message
+    assert "Exact pixels: 100.0%" in message
+    assert str(output / "metrics.json") in message
+
+
+def test_apply_json_keeps_machine_readable_record(tmp_path, capsys):
+    source, destination = tmp_path / "input.png", tmp_path / "output.jpg"
+    make_input(source)
+    main(["apply", str(source), str(destination), "--json"])
+    records = json.loads(capsys.readouterr().out)
+    assert len(records) == 1
+    assert records[0]["output"] == str(destination)
+
+
+def test_config_output_reports_saved_file(tmp_path, capsys):
+    destination = tmp_path / "defaults.yaml"
+    main(["config", "--output", str(destination)])
+    assert capsys.readouterr().out.strip() == (
+        f"Default configuration written to {destination}"
+    )
+    assert "filter: fattal1" in destination.read_text()

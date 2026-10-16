@@ -87,6 +87,40 @@ def test_color_edges_are_protected_at_matching_luminance():
     assert cleanup.mask[:, 62:65].max() == 0
 
 
+@pytest.mark.parametrize("width", [320, 1280])
+def test_cleanup_weight_fades_gradually_as_texture_increases(width):
+    yy, xx = np.indices((256, width))
+    amplitude = 24 * xx / (width - 1)
+    gray = np.rint(100 + amplitude * np.sin(2 * np.pi * yy / 8)).astype(np.uint8)
+    rgb = np.repeat(gray[..., None], 3, 2)
+    cleanup = SourceCleanup(0.25)
+    cleanup(rgb, reference(rgb))
+    profile = cleanup.mask[4:-4].mean(axis=0)
+    assert profile[:20].mean() > 0.9
+    assert profile[-20:].mean() < 0.05
+    assert np.mean((profile > 0.05) & (profile < 0.95)) > 0.1
+    assert np.max(np.abs(np.diff(profile))) < 0.15
+
+
+def test_cleanup_strength_continuously_scales_fractional_rgb_and_luminance():
+    yy, xx = np.indices((65, 97))
+    gray = (60 + xx // 8 + (yy // 9) % 2).astype(np.uint8)
+    rgb = np.repeat(gray[..., None], 3, 2)
+    luminance = reference(rgb)
+    off = SourceCleanup(0)
+    full = SourceCleanup(1)
+    before = off(rgb, luminance)
+    after = full(rgb, luminance)
+    assert np.max(np.abs(after[0] - before[0])) > 0.1
+    for strength in (0.125, 0.25, 0.5, 0.875):
+        cleanup = SourceCleanup(strength)
+        actual = cleanup(rgb, luminance)
+        np.testing.assert_array_equal(cleanup.mask, full.mask)
+        for low, high, output, tolerance in zip(before, after, actual, (2e-5, 1e-7)):
+            expected = low.astype(np.float64) + strength * (high.astype(np.float64) - low)
+            np.testing.assert_allclose(output, expected, atol=tolerance, rtol=0)
+
+
 def test_fractional_corrections_stay_bounded_without_byte_rounding():
     yy, xx = np.indices((65, 97))
     gray = (60 + xx // 8 + (yy // 9) % 2).astype(np.uint8)

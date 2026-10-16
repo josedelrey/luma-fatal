@@ -239,7 +239,7 @@ def test_compressed_preset_enables_debanding_and_cli_can_disable_it(
         destination = tmp_path / f"{deband}.mp4"
         command = [
             "video", str(source), str(destination), "--config", str(preset),
-            "--ffmpeg", tools[0], "--ffprobe", tools[1],
+            "--ffmpeg", tools[0], "--ffprobe", tools[1], "--json",
         ]
         if deband == "off":
             command += ["--deband", "off"]
@@ -295,6 +295,7 @@ def test_cli_cleanup_matches_working_frame_pipeline_and_records_state(
     main([
         "video", str(source), str(destination), "--config", str(path),
         "--flat-cleanup", "0.25", "--ffmpeg", tools[0], "--ffprobe", tools[1],
+        "--json",
     ])
     record = json.loads(capsys.readouterr().out)
     assert record["processed_rgb_sha256"] == expected.hexdigest()
@@ -344,7 +345,12 @@ def test_cli_loads_config_and_applies_overrides(tmp_path, tools, capsys):
     ])
     captured = capsys.readouterr()
     assert "Filtering frames" in captured.err
-    record = json.loads(captured.out)
+    assert "Processing video:" in captured.out
+    assert "Processed video with Fattal 2" in captured.out
+    assert "5 frames" in captured.out
+    assert str(output.with_suffix(".meta.json")) in captured.out
+    assert "implementation_sources_sha256" not in captured.out
+    record = json.loads(output.with_suffix(".meta.json").read_text())
     assert record["filter"] == "fattal2"
     assert record["configuration"]["parameters"]["fade"] == 100
     assert record["configuration"]["numerics"]["shadow_softness"] == 6
