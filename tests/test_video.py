@@ -255,6 +255,22 @@ def test_compressed_preset_enables_debanding_and_cli_can_disable_it(
         assert record["configuration"]["numerics"]["shadow_softness"] == 6
 
 
+def test_progress_reports_frames_without_changing_video(tmp_path, tools, capsys):
+    source = make_clip(tmp_path / "progress.mkv", tools)
+    config = Config(processing=ProcessingConfig(max_edge=24))
+    plain = process_video(
+        source, tmp_path / "plain.mp4", config=config,
+        ffmpeg=tools[0], ffprobe=tools[1],
+    )
+    shown = process_video(
+        source, tmp_path / "shown.mp4", config=config, progress=True,
+        ffmpeg=tools[0], ffprobe=tools[1],
+    )
+    assert plain["processed_rgb_sha256"] == shown["processed_rgb_sha256"]
+    assert plain["output_sha256"] == shown["output_sha256"]
+    assert "Filtering frames" in capsys.readouterr().err
+
+
 def test_fractional_rate_full_range_and_input_budget(tmp_path, tools):
     source = make_clip(tmp_path / "fractional.mkv", tools, rate="30000/1001", color_range="pc")
     config = Config(
@@ -287,9 +303,12 @@ def test_cli_loads_config_and_applies_overrides(tmp_path, tools, capsys):
         "--fade", "100", "--crf", "23", "--preset", "ultrafast",
         "--shadow-softness", "6",
         "--deblock", "weak8",
+        "--progress",
         "--ffmpeg", tools[0], "--ffprobe", tools[1],
     ])
-    record = json.loads(capsys.readouterr().out)
+    captured = capsys.readouterr()
+    assert "Filtering frames" in captured.err
+    record = json.loads(captured.out)
     assert record["filter"] == "fattal2"
     assert record["configuration"]["parameters"]["fade"] == 100
     assert record["configuration"]["numerics"]["shadow_softness"] == 6
