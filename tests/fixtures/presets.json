@@ -54,7 +54,7 @@
           "power_mode": "approximate"
         },
         "schema_version": 1,
-        "video": {"crf": 18, "preset": "medium", "deblock": "off", "deband": "off"}
+        "video": {"crf": 18, "preset": "medium", "deblock": "off", "deband": "off", "flat_cleanup": 0.0}
       }
     },
     {
@@ -109,7 +109,7 @@
           "power_mode": "approximate"
         },
         "schema_version": 1,
-        "video": {"crf": 18, "preset": "medium", "deblock": "off", "deband": "off"}
+        "video": {"crf": 18, "preset": "medium", "deblock": "off", "deband": "off", "flat_cleanup": 0.0}
       }
     }
   ],

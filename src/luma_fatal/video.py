@@ -22,6 +22,7 @@ from tqdm import tqdm
 
 from . import __version__
 from .configuration import Config, VideoConfig, resolve_config
+from .cleanup import SourceCleanup
 from .pipeline import process_frames
 from .processing import input_size
 
@@ -331,6 +332,8 @@ def process_video(
     }
     destination.parent.mkdir(parents=True, exist_ok=True)
     count, processed_hash = 0, hashlib.sha256()
+    cleanup = SourceCleanup(settings.flat_cleanup) if settings.flat_cleanup else None
+    cleanup_options = {} if cleanup is None else {"source_cleanup": cleanup}
     with tempfile.TemporaryDirectory(prefix=".luma-fatal-", dir=destination.parent) as directory:
         temporary = Path(directory) / "video.mp4"
         temporary_meta = Path(directory) / "video.meta.json"
@@ -350,7 +353,7 @@ def process_video(
                     file=sys.stderr, dynamic_ncols=True, disable=not progress,
                 ) as bar:
                     try:
-                        for frame in process_frames(frames, config=config):
+                        for frame in process_frames(frames, config=config, **cleanup_options):
                             if (frame.shape[1], frame.shape[0]) != prepared:
                                 raise ValueError("Processed video frame dimensions changed")
                             frame = np.pad(
@@ -413,7 +416,10 @@ def process_video(
             ),
             audio_policy="discard",
             discarded_audio_streams=stream["audio_streams"],
-            temporal_policy="independent frames, no stabilization",
+            temporal_policy=(
+                "independent effect frames, source cleanup mask history with motion/cut resets"
+                if cleanup is not None else "independent frames, no stabilization"
+            ),
             processed_rgb_sha256=processed_hash.hexdigest(),
             runtime=dict(
                 python=platform.python_version(),
@@ -425,12 +431,18 @@ def process_video(
             ),
             implementation_sources_sha256={
                 name: _digest(Path(__file__).with_name(name)) for name in (
-                    "video.py", "pipeline.py", "configuration.py",
+                    "video.py", "pipeline.py", "configuration.py", "cleanup.py",
                     "processing.py", "core.py", "numerics.py",
                 )
             },
             seconds=time.perf_counter() - start,
         )
+        if cleanup is not None:
+            record["source_cleanup"] = dict(
+                frames=cleanup.frames, mask_resets=cleanup.resets,
+                seconds=cleanup.seconds, guide_max_edge=384,
+                policy="soft source mask, guided floating RGB/luminance, no temporal RGB averaging",
+            )
         if config_path is not None:
             record["config_source"] = dict(
                 path=str(config_path), sha256=_digest(config_path)

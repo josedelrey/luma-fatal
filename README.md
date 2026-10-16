@@ -120,6 +120,34 @@ threshold to decoded YUV before color conversion. It can reduce coarse
 quantization patches, though fine texture and frame-to-frame variation may
 change. It is video-only and defaults to `off` in the original presets. Both
 source filters can be combined.
+
+For additional cleanup in smooth source areas, try `--flat-cleanup 0.25`:
+
+```bash
+uv run --locked luma-fatal video local_inputs/videos/tears-of-steel.mp4 outputs/tears-of-steel-cleanup.mp4 --config configs/fattal-1-compressed.yaml --flat-cleanup 0.25 --progress
+```
+
+The matching configuration setting is `video.flat_cleanup`, a strength from
+0 to 1. It defaults to 0 in every bundled preset, retaining their existing
+media output. Start at 0.25 and compare moving footage before increasing it.
+
+Cleanup detects smooth regions from decoded source RGB after any FFmpeg
+deblocking/debanding and at the effect's working resolution. It combines
+texture at two scales, strong-edge protection, and variation inside reduced
+pixels so fine texture survives detection downsampling. A soft mask controls
+[guided filtering](https://people.csail.mit.edu/kaiming/eccv10/index.html).
+The guide's longest edge is capped at 384 pixels, and a compiled pass upsamples
+the coefficients and applies bounded corrections. Corrected RGB and luminance
+remain floating point through the effect to avoid adding byte-quantization bands.
+Fade and shadow protection still use the original source pixels.
+
+Only the small mask has temporal history. Local source changes release that
+history, strong edges override it immediately, and scene cuts reset it. RGB
+frames are never temporally averaged. This is an experimental structure mask,
+with no semantic face recognition. Smooth skin and desired grain can still
+change. The sidecar records cleanup time and mask resets. First use also incurs
+Numba compilation or cache-loading time. The disabled setting bypasses cleanup.
+
 Existing output files or metadata sidecars are refused. Each successful run writes
 a `.meta.json` sidecar with resolved settings, color/timing policies, dimensions,
 frame count, hashes, dependency/tool versions and implementation fingerprints.

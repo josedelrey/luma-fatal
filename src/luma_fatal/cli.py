@@ -78,7 +78,7 @@ def _settings(args: argparse.Namespace) -> Config:
     }
     video = {
         name: getattr(args, name)
-        for name in ("crf", "preset", "deblock", "deband")
+        for name in ("crf", "preset", "deblock", "deband", "flat_cleanup")
         if getattr(args, name, None) is not None
     }
     return replace(
@@ -211,6 +211,10 @@ def main(argv: list[str] | None = None) -> None:
     video.add_argument(
         "--deband", choices=("off", "gentle"), default=None,
         help="Optional gentle source debanding before the Fattal filter",
+    )
+    video.add_argument(
+        "--flat-cleanup", type=float, default=None,
+        help="Source-guided cleanup strength in smooth areas, 0 to 1, default 0",
     )
     video.add_argument(
         "--ffmpeg", default="ffmpeg", help="FFmpeg executable with zscale and libx264"

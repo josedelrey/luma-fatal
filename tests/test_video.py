@@ -14,7 +14,8 @@ import sys
 import numpy as np
 import pytest
 
-from luma_fatal import Config, FilterParams, NumericsConfig, ProcessingConfig, apply_filter
+from luma_fatal import Config, FilterParams, NumericsConfig, ProcessingConfig, apply_filter, process_frames
+from luma_fatal.cleanup import SourceCleanup
 from luma_fatal.cli import main
 from luma_fatal.video import VideoConfig, _decoded_frames, process_video
 
@@ -118,6 +119,8 @@ def reference_rgb(path, tools, width, height, color_range="limited", deblock="of
     {"crf": True}, {"crf": -1}, {"crf": 52}, {"crf": 1.5}, {"preset": "invalid"},
     {"deblock": "strong"}, {"deblock": True},
     {"deband": "strong"}, {"deband": True},
+    {"flat_cleanup": True}, {"flat_cleanup": -0.1},
+    {"flat_cleanup": 1.1}, {"flat_cleanup": float("nan")},
 ])
 def test_video_settings_reject_invalid_values(kwargs):
     with pytest.raises(ValueError):
@@ -271,6 +274,39 @@ def test_progress_reports_frames_without_changing_video(tmp_path, tools, capsys)
     assert "Filtering frames" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("variant", [1, 2])
+def test_cli_cleanup_matches_working_frame_pipeline_and_records_state(
+    tmp_path, tools, capsys, variant,
+):
+    source = make_clip(tmp_path / "smooth.mkv", tools, width=48, height=36, vf="boxblur=5:1")
+    config = Config(
+        filter=f"fattal{variant}", parameters=FilterParams(fade=0),
+        processing=ProcessingConfig(max_edge=24),
+        numerics=NumericsConfig(iterations=11, shadow_softness=6),
+        video=VideoConfig(deband="gentle"),
+    )
+    path = tmp_path / "cleanup.toml"
+    path.write_text(config.to_toml())
+    expected = hashlib.sha256()
+    decoded = reference_rgb(source, tools, 48, 36, deband="gentle")
+    for frame in process_frames(decoded, config=config, source_cleanup=SourceCleanup(0.25)):
+        expected.update(frame.tobytes())
+    destination = tmp_path / "cleaned.mp4"
+    main([
+        "video", str(source), str(destination), "--config", str(path),
+        "--flat-cleanup", "0.25", "--ffmpeg", tools[0], "--ffprobe", tools[1],
+    ])
+    record = json.loads(capsys.readouterr().out)
+    assert record["processed_rgb_sha256"] == expected.hexdigest()
+    assert record["configuration"]["video"]["flat_cleanup"] == 0.25
+    assert record["video_configuration"]["flat_cleanup"] == 0.25
+    assert record["source_cleanup"]["frames"] == 5
+    assert record["source_cleanup"]["guide_max_edge"] == 384
+    assert record["source_cleanup"]["seconds"] > 0
+    assert "mask history" in record["temporal_policy"]
+    assert len(inspect(destination, tools)["frames"]) == 5
+
+
 def test_fractional_rate_full_range_and_input_budget(tmp_path, tools):
     source = make_clip(tmp_path / "fractional.mkv", tools, rate="30000/1001", color_range="pc")
     config = Config(
@@ -314,6 +350,7 @@ def test_cli_loads_config_and_applies_overrides(tmp_path, tools, capsys):
     assert record["configuration"]["numerics"]["shadow_softness"] == 6
     assert record["video_configuration"] == {
         "crf": 23, "preset": "ultrafast", "deblock": "weak8", "deband": "off",
+        "flat_cleanup": 0.0,
     }
     assert record["config_source"]["sha256"] == hashlib.sha256(config.read_bytes()).hexdigest()
     assert record["padding"]["right"] == record["padding"]["bottom"] == 0

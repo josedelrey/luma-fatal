@@ -270,6 +270,7 @@ class VideoConfig:
     preset: str = "medium"
     deblock: str = "off"
     deband: str = "off"
+    flat_cleanup: float = 0.0
 
     def __post_init__(self):
         if type(self.crf) is not int or not 0 <= self.crf <= 51:
@@ -283,6 +284,7 @@ class VideoConfig:
             raise ValueError("Video deblock must be off, weak4 or weak8")
         if self.deband not in ("off", "gentle"):
             raise ValueError("Video deband must be off or gentle")
+        _finite("video flat_cleanup", self.flat_cleanup, 0, 1)
 
 
 @dataclass(frozen=True)
