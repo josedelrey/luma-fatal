@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import warnings
+from functools import lru_cache
 
 import numpy as np
 from numba import njit
@@ -14,16 +15,26 @@ from .configuration import FilterParams, NumericsConfig
 
 
 def _gaussian3(source: np.ndarray) -> np.ndarray:
-    padded = np.pad(source, 1, mode="edge")
-    result = np.zeros_like(source)
+    return _gaussian3_pass(np.pad(source, 1, mode="edge"))
+
+
+@njit(cache=True)
+def _gaussian3_pass(padded: np.ndarray) -> np.ndarray:
+    """Accumulate the nine taps in the reference float32 order."""
+    height, width = padded.shape[0] - 2, padded.shape[1] - 2
+    result = np.empty((height, width), dtype=np.float32)
     weights = (1 / 16, 2 / 16, 1 / 16, 2 / 16, 4 / 16, 2 / 16, 1 / 16, 2 / 16, 1 / 16)
-    height, width = source.shape
-    for index, weight in enumerate(weights):
-        row, col = divmod(index, 3)
-        result += np.float32(weight) * padded[row : row + height, col : col + width]
+    for y in range(height):
+        for x in range(width):
+            value = np.float32(0)
+            for index, weight in enumerate(weights):
+                row, col = divmod(index, 3)
+                value = np.float32(value + np.float32(weight) * padded[y + row, x + col])
+            result[y, x] = value
     return result
 
 
+@lru_cache(maxsize=64)
 def _cubic_axis(
     length: int, output_length: int, horizontal: bool
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -47,7 +58,10 @@ def _cubic_axis(
     w2 = u * (u * np.float32(1.25) + np.float32(-2.25)) * u + np.float32(1)
     w3 = ((np.float32(1) - w0) - w1) - w2
     indices = np.clip(base[:, None] + np.arange(-1, 3), 0, length - 1)
-    return indices, np.stack((w0, w1, w2, w3), axis=1)
+    weights = np.stack((w0, w1, w2, w3), axis=1)
+    indices.flags.writeable = False
+    weights.flags.writeable = False
+    return indices, weights
 
 
 def _resize_cubic(source: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
@@ -61,12 +75,26 @@ def _resize_cubic(source: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
         return source.copy()
     y_index, y_weight = _cubic_axis(source.shape[0], shape[0], False)
     x_index, x_weight = _cubic_axis(source.shape[1], shape[1], True)
-    horizontal = np.zeros((source.shape[0], shape[1]), dtype=np.float32)
-    for k in range(4):
-        horizontal += source[:, x_index[:, k]] * x_weight[None, :, k]
-    result = np.zeros(shape, dtype=np.float32)
-    for k in range(4):
-        result += horizontal[y_index[:, k], :] * y_weight[:, k, None]
+    return _resize_cubic_pass(source, y_index, y_weight, x_index, x_weight)
+
+
+@njit(cache=True)
+def _resize_cubic_pass(source, y_index, y_weight, x_index, x_weight):
+    """Apply cached cubic axes with the original four-tap accumulation order."""
+    horizontal = np.empty((source.shape[0], x_index.shape[0]), dtype=np.float32)
+    for y in range(source.shape[0]):
+        for x in range(x_index.shape[0]):
+            value = np.float32(0)
+            for k in range(4):
+                value = np.float32(value + source[y, x_index[x, k]] * x_weight[x, k])
+            horizontal[y, x] = value
+    result = np.empty((y_index.shape[0], x_index.shape[0]), dtype=np.float32)
+    for y in range(y_index.shape[0]):
+        for x in range(x_index.shape[0]):
+            value = np.float32(0)
+            for k in range(4):
+                value = np.float32(value + horizontal[y_index[y, k], x] * y_weight[y, k])
+            result[y, x] = value
     return result
 
 
