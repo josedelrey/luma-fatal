@@ -92,12 +92,14 @@ def apply_filter(
     return result
 
 
-def process_frames(frames, *, config: Config):
+def process_frames(frames, *, config: Config, source_cleanup=None):
     """Yield processed decoded RGB8 frames lazily, in input order.
 
     The caller supplies RGB arrays after decoding and color interpretation.
-    This adapter holds no temporal state. Container decoding, timestamps,
-    audio and encoding belong to a future video adapter.
+    This adapter holds no temporal state. An optional source_cleanup callback
+    receives working RGB8 and reference luminance inside the core and returns
+    floating RGB and luminance. Its state belongs to the caller. Container
+    decoding, timestamps, audio and encoding belong to the video adapter.
     """
     if not isinstance(config, Config):
         raise ValueError("config must be a Config")
@@ -106,4 +108,20 @@ def process_frames(frames, *, config: Config):
     for frame in frames:
         if not isinstance(frame, np.ndarray) or frame.ndim != 3 or frame.shape[2] != 3:
             raise ValueError("frames must be decoded RGB arrays")
-        yield apply_filter(frame, config=config)
+        if source_cleanup is None:
+            yield apply_filter(frame, config=config)
+        else:
+            if frame.dtype != np.uint8 or min(frame.shape[:2]) < 1:
+                raise ValueError("frames must be decoded RGB8 arrays")
+            if config.processing.resize:
+                from .processing import process_pixels
+
+                yield process_pixels(
+                    frame, int(config.filter[-1]), config.parameters,
+                    config.processing, config.numerics, source_cleanup=source_cleanup,
+                )
+            else:
+                yield apply_core(
+                    frame, int(config.filter[-1]), config.parameters, config.numerics,
+                    source_cleanup=source_cleanup,
+                )

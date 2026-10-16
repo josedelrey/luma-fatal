@@ -59,3 +59,4 @@ video:
   preset: medium
   deblock: off
   deband: off
+  flat_cleanup: 0.0

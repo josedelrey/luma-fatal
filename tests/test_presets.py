@@ -28,6 +28,7 @@ def test_frozen_recipes_are_complete_and_independent_of_device_defaults(monkeypa
         assert config.output.jpeg_background is None
         assert config.video.deblock == "off"
         assert config.video.deband == "off"
+        assert config.video.flat_cleanup == 0
 
 
 @pytest.mark.parametrize("variant", [1, 2])

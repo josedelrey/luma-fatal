@@ -276,11 +276,13 @@ def _recombine(
     power_mode: str = "approximate",
     output_gamma: float = 1.0,
     shadow_softness: int = 0,
+    color_rgb: np.ndarray | None = None,
+    shadow_luminance: np.ndarray | None = None,
 ) -> np.ndarray:
     # Keep color powers in float64 through final RGB scaling.
     original_scale = luminance * np.float32(255)
     ratio = np.divide(
-        rgb.astype(np.float32),
+        rgb.astype(np.float32) if color_rgb is None else color_rgb,
         original_scale[..., None],
         out=np.zeros(rgb.shape, np.float32),
         where=original_scale[..., None] > 0,
@@ -296,12 +298,14 @@ def _recombine(
     result = result + 0.5
     # fmin maps NaNs to the upper limit before byte quantization.
     result = np.maximum(np.fmin(result, 255), 0).astype(np.uint8)
-    result[original_scale <= shadow_threshold] = rgb[original_scale <= shadow_threshold]
+    shadow_scale = original_scale if shadow_luminance is None else shadow_luminance * np.float32(255)
+    result[shadow_scale <= shadow_threshold] = rgb[shadow_scale <= shadow_threshold]
     return result
 
 
 def apply_core(
-    array: np.ndarray, variant: int, params: FilterParams, numerics: NumericsConfig
+    array: np.ndarray, variant: int, params: FilterParams, numerics: NumericsConfig,
+    *, source_cleanup=None,
 ) -> np.ndarray:
     """Apply the effect to decoded pixels with no file or resizing policies."""
     result = array.copy()
@@ -317,6 +321,11 @@ def apply_core(
                 luminance = luminance_fractional(rgb)
             else:
                 luminance = luminance_u8(rgb).astype(np.float32) * np.float32(1 / 255)
+            color_rgb = None
+            shadow_luminance = None
+            if source_cleanup is not None:
+                shadow_luminance = luminance
+                color_rgb, luminance = source_cleanup(rgb, luminance)
             maximum = np.max(luminance)
             if maximum > 0:
                 # Add the offset in float64, then narrow before the scalar logarithm.
@@ -356,6 +365,8 @@ def apply_core(
                     numerics.power_mode,
                     params.output_gamma,
                     numerics.shadow_softness,
+                    color_rgb,
+                    shadow_luminance,
                 )
                 # Opaque Normal Fade uses nearest rounding with downward ties.
                 amount = np.float32(params.fade) / np.float32(100)
