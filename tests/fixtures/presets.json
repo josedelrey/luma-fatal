@@ -49,6 +49,7 @@
           "log_offset": 0.01,
           "shadow_threshold": 6,
           "shadow_softness": 0,
+          "luminance_mode": "rounded",
           "detail_level": 0,
           "power_mode": "approximate"
         },
@@ -102,6 +103,7 @@
           "log_offset": 0.01,
           "shadow_threshold": 6,
           "shadow_softness": 0,
+          "luminance_mode": "rounded",
           "detail_level": 0,
           "power_mode": "approximate"
         },

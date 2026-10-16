@@ -74,6 +74,17 @@ def luminance_u8(rgb: NDArray[np.uint8]) -> NDArray[np.uint8]:
     return result.astype(np.uint8)
 
 
+def luminance_fractional(rgb: NDArray[np.uint8]) -> NDArray[np.float32]:
+    """Use the reference RGB weights without rounding luminance to a byte."""
+    channels = rgb.astype(np.int32)
+    weighted = (
+        4899 * channels[..., 0]
+        + 9617 * channels[..., 1]
+        + 1868 * channels[..., 2]
+    )
+    return weighted.astype(np.float32) / np.float32(16384 * 255)
+
+
 def attenuation(gradient: F32, alpha: float, beta: float, noise: float) -> F32:
     """Compute a gradient attenuation field from its mean magnitude."""
     row_sums = np.cumsum(gradient, axis=1, dtype=np.float32)[:, -1]
