@@ -23,7 +23,7 @@ from luma_fatal.video import VideoConfig, _decoded_frames, process_video
 def tools():
     paths = [shutil.which(name) for name in ("ffmpeg", "ffprobe")]
     if not all(paths):
-        message = "Video integration tests require FFmpeg with zscale/deblock/libx264 and ffprobe"
+        message = "Video integration tests require FFmpeg with zscale/deblock/deband/libx264 and ffprobe"
         if os.environ.get("LUMA_FATAL_REQUIRE_VIDEO_TESTS") == "1":
             pytest.fail(message)
         pytest.skip(message)
@@ -31,6 +31,7 @@ def tools():
     encoders = run([paths[0], "-v", "error", "-encoders"])
     assert b"zscale" in filters, "FFmpeg needs the zscale filter"
     assert b"deblock" in filters, "FFmpeg needs the deblock filter"
+    assert b"deband" in filters, "FFmpeg needs the deband filter"
     assert b"libx264" in encoders, "FFmpeg needs the libx264 encoder"
     return paths
 
@@ -88,15 +89,23 @@ def inspect(path, tools):
     ]))
 
 
-def reference_rgb(path, tools, width, height, color_range="limited", deblock="off"):
+def reference_rgb(path, tools, width, height, color_range="limited", deblock="off",
+                  deband="off"):
     # This is the documented video-to-filter boundary, before any Luma Fatal effects.
     conversion = (
         "zscale=matrixin=709:transferin=709:primariesin=709:"
         f"rangein={color_range}:matrix=gbr:transfer=iec61966-2-1:"
         "primaries=709:range=full,format=gbrp,format=rgb24"
     )
+    prefilters = []
     if deblock != "off":
-        conversion = f"deblock=filter=weak:block={int(deblock[-1])}," + conversion
+        prefilters.append(f"deblock=filter=weak:block={int(deblock[-1])}")
+    if deband == "gentle":
+        prefilters.append(
+            "deband=1thr=0.008:2thr=0.008:3thr=0.008:range=8"
+        )
+    if prefilters:
+        conversion = ",".join(prefilters) + "," + conversion
     data = run([
         tools[0], "-v", "error", "-i", str(path), "-map", "0:v:0", "-an",
         "-vf", conversion,
@@ -108,6 +117,7 @@ def reference_rgb(path, tools, width, height, color_range="limited", deblock="of
 @pytest.mark.parametrize("kwargs", [
     {"crf": True}, {"crf": -1}, {"crf": 52}, {"crf": 1.5}, {"preset": "invalid"},
     {"deblock": "strong"}, {"deblock": True},
+    {"deband": "strong"}, {"deband": True},
 ])
 def test_video_settings_reject_invalid_values(kwargs):
     with pytest.raises(ValueError):
@@ -209,7 +219,7 @@ def test_video_deblocking_precedes_filter_and_records_setting(
 
 
 @pytest.mark.parametrize("variant", [1, 2])
-def test_compressed_preset_enables_deblocking_and_cli_can_disable_it(
+def test_compressed_preset_enables_debanding_and_cli_can_disable_it(
     tmp_path, tools, capsys, variant,
 ):
     source = make_clip(tmp_path / "compressed.mkv", tools)
@@ -218,25 +228,30 @@ def test_compressed_preset_enables_deblocking_and_cli_can_disable_it(
         / "configs" / f"fattal-{variant}-compressed.yaml"
     )
     config = Config.load(preset)
-    for deblock in ("weak8", "off"):
-        destination = tmp_path / f"{deblock}.mp4"
+    assert np.any(
+        reference_rgb(source, tools, 47, 35, deband="gentle")
+        != reference_rgb(source, tools, 47, 35)
+    )
+    for deband in ("gentle", "off"):
+        destination = tmp_path / f"{deband}.mp4"
         command = [
             "video", str(source), str(destination), "--config", str(preset),
             "--ffmpeg", tools[0], "--ffprobe", tools[1],
         ]
-        if deblock == "off":
-            command += ["--deblock", "off"]
+        if deband == "off":
+            command += ["--deband", "off"]
         main(command)
         record = json.loads(capsys.readouterr().out)
         expected = hashlib.sha256()
-        for frame in reference_rgb(source, tools, 47, 35, deblock=deblock):
+        for frame in reference_rgb(source, tools, 47, 35, deband=deband):
             filtered = apply_filter(frame, config=config)
             expected.update(
                 np.pad(filtered, ((0, 1), (0, 1), (0, 0)), mode="edge").tobytes()
             )
         assert record["processed_rgb_sha256"] == expected.hexdigest()
-        assert record["video_configuration"]["deblock"] == deblock
-        assert record["configuration"]["video"]["deblock"] == deblock
+        assert record["video_configuration"]["deblock"] == "off"
+        assert record["video_configuration"]["deband"] == deband
+        assert record["configuration"]["video"]["deband"] == deband
         assert record["configuration"]["numerics"]["shadow_softness"] == 6
 
 
@@ -279,7 +294,7 @@ def test_cli_loads_config_and_applies_overrides(tmp_path, tools, capsys):
     assert record["configuration"]["parameters"]["fade"] == 100
     assert record["configuration"]["numerics"]["shadow_softness"] == 6
     assert record["video_configuration"] == {
-        "crf": 23, "preset": "ultrafast", "deblock": "weak8",
+        "crf": 23, "preset": "ultrafast", "deblock": "weak8", "deband": "off",
     }
     assert record["config_source"]["sha256"] == hashlib.sha256(config.read_bytes()).hexdigest()
     assert record["padding"]["right"] == record["padding"]["bottom"] == 0

@@ -56,6 +56,7 @@ def test_device_and_custom_limits(device, edge):
         {"image": {"color_space": ["srgb"]}},
         {"filter": "fattal3"},
         {"video": {"deblock": "strong"}},
+        {"video": {"deband": "strong"}},
         {"video": {"crf": True}},
     ],
 )
@@ -67,7 +68,7 @@ def test_invalid_config_is_rejected(values):
 def test_config_round_trip_and_checked_in_defaults(tmp_path):
     config = Config(
         output=OutputConfig(jpeg_background=(10, 20, 30)),
-        video=VideoConfig(deblock="weak8"),
+        video=VideoConfig(deblock="weak8", deband="gentle"),
     )
     for suffix, content in [
         ("toml", config.to_toml()),

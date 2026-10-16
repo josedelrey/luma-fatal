@@ -269,6 +269,7 @@ class VideoConfig:
     crf: int = 18
     preset: str = "medium"
     deblock: str = "off"
+    deband: str = "off"
 
     def __post_init__(self):
         if type(self.crf) is not int or not 0 <= self.crf <= 51:
@@ -280,6 +281,8 @@ class VideoConfig:
             raise ValueError("Unsupported H.264 preset")
         if self.deblock not in ("off", "weak4", "weak8"):
             raise ValueError("Video deblock must be off, weak4 or weak8")
+        if self.deband not in ("off", "gentle"):
+            raise ValueError("Video deband must be off or gentle")
 
 
 @dataclass(frozen=True)

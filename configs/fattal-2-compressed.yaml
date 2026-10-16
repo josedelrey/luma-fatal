@@ -1,4 +1,4 @@
-# Fattal 2 with smooth shadows and weak deblocking for compressed video.
+# Fattal 2 with smooth shadows and gentle debanding for compressed video.
 schema_version: 1
 filter: fattal2
 parameters:
@@ -45,4 +45,5 @@ numerics:
 video:
   crf: 18
   preset: medium
-  deblock: weak8
+  deblock: off
+  deband: gentle

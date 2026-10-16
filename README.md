@@ -59,24 +59,27 @@ directory. For the complete command reference, run
 ## Process a video
 
 Video processing also requires `ffmpeg` and `ffprobe` on `PATH`. FFmpeg must
-include the `zscale` filter and `libx264` encoder. No additional Python
-dependencies are needed.
+include the `zscale` filter and `libx264` encoder. The optional source
+treatments also require the corresponding `deblock` or `deband` filter. No
+additional Python dependencies are needed.
 
 ```bash
 uv run --locked luma-fatal video local_inputs/input.mp4 outputs/stylized.mp4 --config configs/fattal-1.yaml
 ```
 
-For compressed inputs, the paired presets enable smooth shadows and weak
-deblocking while retaining the original Fattal parameters:
+For compressed inputs, the paired presets enable smooth shadows and gentle
+debanding while retaining the original Fattal parameters:
 
 ```bash
 uv run --locked luma-fatal video local_inputs/videos/four-people.mp4 outputs/four-people-compressed.mp4 --config configs/fattal-1-compressed.yaml
 ```
 
 Use `configs/fattal-2-compressed.yaml` for Fattal 2. The original preset files
-pin the previous shadow and deblocking settings. The compressed presets retain
-rounded luminance because the fractional-luminance experiment gave little
-visible improvement to the block patches.
+pin the previous shadow and video preprocessing settings. Gentle debanding
+reduces the coarse patches visible in the Tears of Steel sample, where weak
+deblocking made little visible difference. The compressed presets retain rounded
+luminance because the fractional-luminance experiment gave little visible
+improvement to the block patches.
 
 The first video adapter supports one progressive, square-pixel, constant-frame-rate
 video stream with explicit BT.709 matrix, transfer, primaries and range tags.
@@ -101,6 +104,11 @@ For blocky sources, `--deblock weak8` applies FFmpeg's weak deblocking to
 8-pixel boundaries before color conversion and filtering. `weak4` uses 4-pixel
 boundaries. This is video-only and defaults to `off`. Deblocking can soften
 detail, and its fixed grid may miss blocks from variable-size codecs.
+`--deband gentle` applies FFmpeg debanding with an 8-pixel range and low
+threshold to decoded YUV before color conversion. It can reduce coarse
+quantization patches, though fine texture and frame-to-frame variation may
+change. It is video-only and defaults to `off` in the original presets. Both
+source filters can be combined.
 Existing output files or metadata sidecars are refused. Each successful run writes
 a `.meta.json` sidecar with resolved settings, color/timing policies, dimensions,
 frame count, hashes, dependency/tool versions and implementation fingerprints.
@@ -131,8 +139,8 @@ the configuration file. The bundled configurations are:
 | [`configs/high.yaml`](configs/high.yaml) | General defaults with a 12 MP input cap and 2048-pixel working edge |
 | [`configs/fattal-1.yaml`](configs/fattal-1.yaml) | Complete Fattal 1 reference preset with fade 0 |
 | [`configs/fattal-2.yaml`](configs/fattal-2.yaml) | Complete Fattal 2 reference preset with fade 0 |
-| [`configs/fattal-1-compressed.yaml`](configs/fattal-1-compressed.yaml) | Fattal 1 with smooth shadows and weak video deblocking |
-| [`configs/fattal-2-compressed.yaml`](configs/fattal-2-compressed.yaml) | Fattal 2 with smooth shadows and weak video deblocking |
+| [`configs/fattal-1-compressed.yaml`](configs/fattal-1-compressed.yaml) | Fattal 1 with smooth shadows and gentle video debanding |
+| [`configs/fattal-2-compressed.yaml`](configs/fattal-2-compressed.yaml) | Fattal 2 with smooth shadows and gentle video debanding |
 
 `alpha`, `beta`, `saturation`, `noise`, and `fade` use a 0–100 scale, with `alpha`
 strictly positive. `alpha` and `beta` control gradient attenuation, `saturation`
