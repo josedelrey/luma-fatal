@@ -216,6 +216,10 @@ def main(argv: list[str] | None = None) -> None:
         "--ffmpeg", default="ffmpeg", help="FFmpeg executable with zscale and libx264"
     )
     video.add_argument("--ffprobe", default="ffprobe", help="ffprobe executable")
+    video.add_argument(
+        "--progress", action="store_true",
+        help="Show a frame progress bar with processing speed and ETA",
+    )
     compare = commands.add_parser(
         "compare", help="Measure matching RGB pixels without alignment or resizing"
     )
@@ -380,6 +384,7 @@ def main(argv: list[str] | None = None) -> None:
                 args.output,
                 config=_settings(args),
                 config_path=args.config,
+                progress=args.progress,
                 ffmpeg=args.ffmpeg,
                 ffprobe=args.ffprobe,
             )

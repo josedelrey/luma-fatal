@@ -13,10 +13,12 @@ from pathlib import Path
 import platform
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 
 import numpy as np
+from tqdm import tqdm
 
 from . import __version__
 from .configuration import Config, VideoConfig, resolve_config
@@ -280,6 +282,7 @@ def process_video(
     config: Config | None = None,
     config_path: str | Path | None = None,
     video_config: VideoConfig | None = None,
+    progress: bool = False,
     ffmpeg: str | Path = "ffmpeg",
     ffprobe: str | Path = "ffprobe",
 ) -> dict:
@@ -342,29 +345,34 @@ def process_video(
                 encode, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL
             ) as (encoder, encode_log):
                 frames = _decoded_frames(decoder.stdout, stream["width"], stream["height"])
-                try:
-                    for frame in process_frames(frames, config=config):
-                        if (frame.shape[1], frame.shape[0]) != prepared:
-                            raise ValueError("Processed video frame dimensions changed")
-                        frame = np.pad(
-                            frame,
-                            ((0, height - prepared[1]), (0, width - prepared[0]), (0, 0)),
-                            mode="edge",
-                        )
-                        data = frame.tobytes()
-                        encoder.stdin.write(data)
-                        processed_hash.update(data)
-                        count += 1
-                    encoder.stdin.close()
-                except OSError as error:
+                with tqdm(
+                    total=expected, desc="Filtering frames", unit="frame",
+                    file=sys.stderr, dynamic_ncols=True, disable=not progress,
+                ) as bar:
                     try:
+                        for frame in process_frames(frames, config=config):
+                            if (frame.shape[1], frame.shape[0]) != prepared:
+                                raise ValueError("Processed video frame dimensions changed")
+                            frame = np.pad(
+                                frame,
+                                ((0, height - prepared[1]), (0, width - prepared[0]), (0, 0)),
+                                mode="edge",
+                            )
+                            data = frame.tobytes()
+                            encoder.stdin.write(data)
+                            processed_hash.update(data)
+                            count += 1
+                            bar.update(1)
                         encoder.stdin.close()
-                    except OSError:
-                        pass
-                    _check(encoder, encode_log, "Video encoding")
-                    raise ValueError(
-                        "Video encoder closed its input unexpectedly"
-                    ) from error
+                    except OSError as error:
+                        try:
+                            encoder.stdin.close()
+                        except OSError:
+                            pass
+                        _check(encoder, encode_log, "Video encoding")
+                        raise ValueError(
+                            "Video encoder closed its input unexpectedly"
+                        ) from error
                 _check(decoder, decode_log, "Video decoding")
                 _check(encoder, encode_log, "Video encoding")
         if count != expected:

@@ -71,7 +71,7 @@ For compressed inputs, the paired presets enable smooth shadows and gentle
 debanding while retaining the original Fattal parameters:
 
 ```bash
-uv run --locked luma-fatal video local_inputs/videos/four-people.mp4 outputs/four-people-compressed.mp4 --config configs/fattal-1-compressed.yaml
+uv run --locked luma-fatal video local_inputs/videos/four-people.mp4 outputs/four-people-compressed.mp4 --config configs/fattal-1-compressed.yaml --progress
 ```
 
 Use `configs/fattal-2-compressed.yaml` for Fattal 2. The original preset files
@@ -80,6 +80,17 @@ reduces the coarse patches visible in the Tears of Steel sample, where weak
 deblocking made little visible difference. The compressed presets retain rounded
 luminance because the fractional-luminance experiment gave little visible
 improvement to the block patches.
+
+To process the complete Tears of Steel clip with Fattal 1 and see frames per
+second and an estimated time remaining:
+
+```bash
+uv run --locked luma-fatal video local_inputs/videos/tears-of-steel.mp4 outputs/tears-of-steel-fattal-1-compressed.mp4 --config configs/fattal-1-compressed.yaml --progress
+```
+
+The progress bar reports filtered frames on stderr. A JSON run record is printed
+to stdout when encoding and verification finish. Use a new output filename for
+each run, since existing outputs are refused.
 
 The first video adapter supports one progressive, square-pixel, constant-frame-rate
 video stream with explicit BT.709 matrix, transfer, primaries and range tags.
