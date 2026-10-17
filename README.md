@@ -11,7 +11,7 @@ resolved settings and input/output fingerprints alongside each file output.
 
 | Original | Fattal 1 | Fattal 2 |
 | :---: | :---: | :---: |
-| ![input](assets/lantern-garden-original.png) | ![Fattal 1 result](assets/lantern-garden-fattal-1.png) | ![Fattal 2 result](assets/lantern-garden-fattal-2.png) |
+| <img src="assets/lantern-garden-original.png" alt="input" width="280" height="350"> | <img src="assets/lantern-garden-fattal-1.png" alt="Fattal 1 result" width="280" height="350"> | <img src="assets/lantern-garden-fattal-2.png" alt="Fattal 2 result" width="280" height="350"> |
 
 *Final Fantasy XIV* imagery by Square Enix, captured by
 [Acerola](https://www.youtube.com/watch?v=jJnwzkBre8Y&t=1443s).
