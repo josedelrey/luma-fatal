@@ -1,5 +1,7 @@
 # Source cleanup investigation
 
+For the separate noise-before-filter trial, see [Pre-filter noise](prenoise.md).
+
 Investigated on 2026-10-16 and subsequently made available as an optional
 video mode. Its purpose is to test stronger correction of broad shading
 artifacts while retaining fine source variation. It generates no new grain.

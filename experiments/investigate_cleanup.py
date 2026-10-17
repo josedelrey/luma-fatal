@@ -270,7 +270,7 @@ def run_video(args, config):
     }
 
 
-def main():
+def main(argv=None, extra_record=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=("still", "synthetic", "video", "benchmark"))
     parser.add_argument("--input", type=Path)
@@ -280,7 +280,7 @@ def main():
     parser.add_argument("--crop", nargs=4, type=int)
     parser.add_argument("--start", type=float, default=0)
     parser.add_argument("--frames", type=int, default=48)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.mode != "synthetic" and args.input is None:
         parser.error("--input is required outside synthetic mode")
     if args.start < 0 or args.frames < 2:
@@ -291,6 +291,8 @@ def main():
     args.output.mkdir(parents=True, exist_ok=False)
     result = {"configuration": config.to_dict(), "cases": args.cases,
               "input": str(args.input), "mode": args.mode}
+    if extra_record:
+        result.update(extra_record)
     result["measurements"] = {
         "still": run_still, "synthetic": run_synthetic, "video": run_video,
         "benchmark": run_benchmark,
