@@ -15,6 +15,7 @@ parameters:
   highlight_compression: 0
   black_level: 0
   white_level: 100
+  vibrance: 0
 # max_edge controls effect working resolution, not output dimensions.
 # max_input_pixels caps decoded image area before the effect.
 # Null limits use the selected device_class budget.

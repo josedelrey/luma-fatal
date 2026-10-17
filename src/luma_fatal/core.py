@@ -320,6 +320,40 @@ def _compress_highlights(rgb: np.ndarray, strength: float) -> np.ndarray:
 
 
 @njit(cache=True)
+def _boost_vibrance(rgb: np.ndarray, strength: float) -> np.ndarray:
+    """Boost muted RGB chroma while preserving weighted brightness and gamut."""
+    result = np.empty_like(rgb)
+    amount = strength / 100.0
+    for y in range(rgb.shape[0]):
+        for x in range(rgb.shape[1]):
+            for channel in range(3):
+                value = rgb[y, x, channel]
+                if np.isnan(value) or value > 255:
+                    value = 255.0
+                elif value < 0:
+                    value = 0.0
+                result[y, x, channel] = value
+            red, green, blue = result[y, x, 0], result[y, x, 1], result[y, x, 2]
+            peak = max(red, green, blue)
+            minimum = min(red, green, blue)
+            if amount == 0 or peak == minimum:
+                continue
+            saturation = (peak - minimum) / peak
+            gain = 1.0 + amount * (1.0 - saturation) ** 2
+            brightness = (4899.0 * red + 9617.0 * green + 1868.0 * blue) / 16384.0
+            if peak > brightness:
+                gain = min(gain, (255.0 - brightness) / (peak - brightness))
+            if minimum < brightness:
+                gain = min(gain, brightness / (brightness - minimum))
+            if gain <= 1:
+                continue
+            for channel in range(3):
+                value = brightness + gain * (result[y, x, channel] - brightness)
+                result[y, x, channel] = min(max(value, 0.0), 255.0)
+    return result
+
+
+@njit(cache=True)
 def _quantize_output_levels(
     rgb, filtered, reference_luminance, shadow_threshold, shadow_softness,
     black_level, white_level,
@@ -374,6 +408,7 @@ def _recombine(
     highlight_compression: float = 0,
     black_level: float = 0,
     white_level: float = 100,
+    vibrance: float = 0,
 ) -> np.ndarray:
     if tone_strength < 100:
         source_luminance = luminance if shadow_luminance is None else shadow_luminance
@@ -400,6 +435,8 @@ def _recombine(
         # Apply the curve to filtered RGB before byte quantization and fade.
         unit = np.maximum(np.fmin(result, 255), 0) / 255
         result = np.power(unit, 1.0 / output_gamma) * 255
+    if vibrance > 0:
+        result = _boost_vibrance(result, vibrance)
     if black_level != 0 or white_level != 100:
         reference = luminance if shadow_luminance is None else shadow_luminance
         return _quantize_output_levels(
@@ -492,6 +529,7 @@ def apply_core(
                     params.highlight_compression,
                     params.black_level,
                     params.white_level,
+                    params.vibrance,
                 )
             elif levels_active:
                 filtered = _quantize_output_levels(

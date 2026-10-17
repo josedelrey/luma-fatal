@@ -136,6 +136,7 @@ class FilterParams:
     highlight_compression: float = 0
     black_level: float = 0
     white_level: float = 100
+    vibrance: float = 0
 
     def __post_init__(self):
         for name, value in asdict(self).items():

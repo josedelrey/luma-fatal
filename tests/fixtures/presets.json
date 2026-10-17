@@ -17,7 +17,8 @@
           "tone_strength": 100,
           "highlight_compression": 0,
           "black_level": 0,
-          "white_level": 100
+          "white_level": 100,
+          "vibrance": 0
         },
         "processing": {
           "device_class": "medium",
@@ -76,7 +77,8 @@
           "tone_strength": 100,
           "highlight_compression": 0,
           "black_level": 0,
-          "white_level": 100
+          "white_level": 100,
+          "vibrance": 0
         },
         "processing": {
           "device_class": "medium",

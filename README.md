@@ -247,8 +247,8 @@ the configuration file. The bundled configurations are:
 | [`configs/fattal-1-compressed-fbm.yaml`](configs/fattal-1-compressed-fbm.yaml) | Fattal 1 with masked fBm-like noise 0.75 |
 | [`configs/fattal-2-compressed-fbm.yaml`](configs/fattal-2-compressed-fbm.yaml) | Fattal 2 with masked fBm-like noise 0.75 |
 
-`alpha`, `beta`, `saturation`, `noise`, `fade`, `tone_strength`, and
-`highlight_compression` use a 0–100 scale, with `alpha` strictly positive.
+`alpha`, `beta`, `saturation`, `noise`, `fade`, `tone_strength`,
+`highlight_compression`, and `vibrance` use a 0–100 scale, with `alpha` strictly positive.
 `black_level` and `white_level` are output percentages on the same scale,
 with black strictly below white.
 `alpha` and `beta` control gradient attenuation, `saturation`
@@ -294,6 +294,7 @@ New controls are opt-in and retain the original preset output when disabled.
 | `parameters.highlight_compression` | `0` | Roll off bright RGB peaks together before clipping, retaining their color ratios |
 | `parameters.black_level` | `0` | Output black endpoint as a percentage of white |
 | `parameters.white_level` | `100` | Output white endpoint as a percentage of white |
+| `parameters.vibrance` | `0` | Boost muted colors more than saturated colors, with brightness and gamut protection |
 
 `tone_strength` controls how strongly the filter changes brightness in images
 and video. `100` retains the full effect. `0` uses original source brightness,
@@ -362,6 +363,30 @@ RGB afterward, so a positive Fade can bring values outside the selected range.
 to the nearest representable RGB8 value. JPEG and video encoding can also alter
 the decoded range slightly. Black must be strictly below white, and both must
 be finite percentages from 0 to 100.
+
+`vibrance` boosts available color in both images and video. `0` disables it and
+preserves the reference output. Higher values strengthen muted colors more than
+already saturated areas. Try `--vibrance 50` or set `parameters.vibrance: 50`:
+
+```bash
+uv run --locked luma-fatal video local_inputs/input.mp4 outputs/more-color.mp4 --config configs/fattal-1-compressed-noise.yaml --tone-strength 60 --highlight-compression 60 --vibrance 50
+```
+
+Vibrance runs on clipped floating RGB after highlight compression and output
+gamma, before shadow protection, output levels and RGB8 quantization. It
+increases channel differences around weighted RGB brightness, using the same
+RGB weights as the core. Saturation is measured as `(max - min) / max`, and
+the requested chroma gain is `1 + (vibrance / 100) * (1 - saturation)^2`.
+The gain is reduced near gamut boundaries to keep channels in range while
+preserving weighted brightness and the direction of their color differences.
+Neutral grays and fully saturated colors remain unchanged at this stage.
+
+This control is independent of `saturation`, which adjusts the earlier color
+reconstruction. It strengthens remaining color and cannot recreate color lost
+to clipping or grayscale conversion. Output levels can subsequently reduce the
+visible boost when black is raised. Protected shadows and Fade retain their
+existing behavior. Vibrance runs at working resolution before enlargement and
+adds no temporal state.
 
 `detail_level` is a nonnegative integer. It excludes fine scales while
 `pyramid_min_size` controls the coarsest scale. Retained attenuation fields are
