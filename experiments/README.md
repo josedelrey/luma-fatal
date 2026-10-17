@@ -1,13 +1,13 @@
 # Source cleanup investigation
 
-Investigated on 2026-10-16. This prototype is separate from the runtime and does
-not add a public CLI setting. Its purpose is to test stronger correction of
-broad shading artifacts while retaining fine source variation. It generates no
-new grain. The existing `--flat-cleanup 0.75` remains the comparison baseline.
+Investigated on 2026-10-16 and subsequently made available as an optional
+video mode. Its purpose is to test stronger correction of broad shading
+artifacts while retaining fine source variation. It generates no new grain.
+The standard `--flat-cleanup 0.75` remains the comparison baseline.
 
 ## Method
 
-`cleanup_multiscale.py` wraps `SourceCleanup(1)` and reuses its continuous mask.
+`cleanup_multiscale.py` imports the production wrapper, which uses `SourceCleanup(1)` and reuses its continuous mask.
 Let `D` be its full masked correction, `m` its mask, and `G` a Gaussian filter:
 
 ```text
@@ -77,11 +77,10 @@ measured median cleanup-only times of approximately 59 ms for current 0.75,
 filters multiple full-frame arrays. It requires optimization before adoption.
 Concurrent video runs are unsuitable for a precise end-to-end speed claim.
 
-Recommendation: retain current cleanup 0.75 as the production baseline.
-Candidate A is an optional research comparison. The present decomposition is
-not a demonstrated replacement, and restoring more fine residual can undo the
-desired contour suppression. Longer motion review, stronger edge checks and
-performance work would be needed before integration.
+The multiscale mode can be selected explicitly for video and by the two
+compressed multiscale presets. Candidate A remains an optional visual treatment.
+Restoring more fine residual can undo the desired contour suppression. Longer
+motion review, stronger edge checks and performance work remain useful.
 
 ## Reproduction
 
@@ -111,7 +110,7 @@ uv run python experiments/investigate_cleanup.py benchmark \
   --cases current075 split075-s12 split050-s12 \
   --output outputs/cleanup-benchmark-new
 
-uv run python -m pytest -q experiments/test_cleanup_multiscale.py tests/test_cleanup.py
+uv run python -m pytest -q tests/test_multiscale_cleanup.py tests/test_cleanup.py
 ```
 
 The runner records settings, source fingerprints, timings and input hashes.
