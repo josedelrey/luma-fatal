@@ -271,6 +271,9 @@ class VideoConfig:
     deblock: str = "off"
     deband: str = "off"
     flat_cleanup: float = 0.0
+    flat_cleanup_mode: str = "standard"
+    flat_cleanup_coarse_strength: float = 1.0
+    flat_cleanup_sigma: float = 1.2
 
     def __post_init__(self):
         if type(self.crf) is not int or not 0 <= self.crf <= 51:
@@ -285,6 +288,11 @@ class VideoConfig:
         if self.deband not in ("off", "gentle"):
             raise ValueError("Video deband must be off or gentle")
         _finite("video flat_cleanup", self.flat_cleanup, 0, 1)
+        _choice("video flat_cleanup_mode", self.flat_cleanup_mode,
+                ("standard", "multiscale"))
+        _finite("video flat_cleanup_coarse_strength",
+                self.flat_cleanup_coarse_strength, 0, 1)
+        _finite("video flat_cleanup_sigma", self.flat_cleanup_sigma, 0.01, 16)
 
 
 @dataclass(frozen=True)
@@ -352,6 +360,22 @@ class Config:
 
     @classmethod
     def load(cls, path: str | Path):
+        return cls.from_dict(cls._load_data(Path(path), ()))
+
+    @classmethod
+    def source_paths(cls, path: str | Path) -> tuple[Path, ...]:
+        """List a configuration and its inherited files in resolution order."""
+        sources = []
+        cls._load_data(Path(path), (), sources)
+        return tuple(sources)
+
+    @classmethod
+    def _load_data(
+        cls, path: Path, ancestors: tuple[Path, ...], sources: list[Path] | None = None
+    ):
+        resolved = path.resolve()
+        if resolved in ancestors:
+            raise ValueError(f"Configuration inheritance cycle at {path}")
         path = Path(path)
         try:
             if path.suffix.lower() in (".yaml", ".yml"):
@@ -366,7 +390,30 @@ class Config:
                 )
         except (yaml.YAMLError, tomllib.TOMLDecodeError, json.JSONDecodeError) as error:
             raise ValueError(f"Invalid configuration file {path}: {error}") from error
-        return cls.from_dict(data)
+        if sources is not None:
+            sources.append(resolved)
+        if not isinstance(data, dict):
+            return data
+        own = data.copy()
+        if "extends" not in own:
+            return own
+        parent_name = own.pop("extends")
+        if not isinstance(parent_name, str) or not parent_name.strip():
+            raise ValueError("extends must name a configuration file")
+        parent = cls._load_data(
+            path.parent / parent_name, (*ancestors, resolved), sources
+        )
+        if not isinstance(parent, dict):
+            raise ValueError("Inherited configuration must be an object")
+        merged = parent.copy()
+        for name, value in own.items():
+            if name in ("parameters", "processing", "image", "output", "numerics", "video"):
+                if not isinstance(value, dict) or not isinstance(parent.get(name), dict):
+                    raise ValueError(f"Inherited {name} section must be an object")
+                merged[name] = {**parent[name], **value}
+            else:
+                merged[name] = value
+        return merged
 
     def to_dict(self):
         return asdict(self)

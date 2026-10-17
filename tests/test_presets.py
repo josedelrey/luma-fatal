@@ -32,7 +32,7 @@ def test_frozen_recipes_are_complete_and_independent_of_device_defaults(monkeypa
 
 
 @pytest.mark.parametrize("variant", [1, 2])
-def test_compressed_presets_only_change_shadow_blending_and_video_debanding(variant):
+def test_compressed_presets_enable_smooth_shadows_debanding_and_cleanup(variant):
     root = Path(__file__).resolve().parents[1]
     reference = configuration.Config.load(root / "configs" / f"fattal-{variant}.yaml")
     compressed = configuration.Config.load(
@@ -41,7 +41,7 @@ def test_compressed_presets_only_change_shadow_blending_and_video_debanding(vari
     assert compressed == replace(
         reference,
         numerics=replace(reference.numerics, shadow_softness=6),
-        video=replace(reference.video, deband="gentle"),
+        video=replace(reference.video, deband="gentle", flat_cleanup=0.75),
     )
 
 

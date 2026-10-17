@@ -22,7 +22,7 @@ from tqdm import tqdm
 
 from . import __version__
 from .configuration import Config, VideoConfig, resolve_config
-from .cleanup import SourceCleanup
+from .cleanup import MultiscaleSourceCleanup, SourceCleanup
 from .pipeline import process_frames
 from .processing import input_size
 
@@ -332,7 +332,16 @@ def process_video(
     }
     destination.parent.mkdir(parents=True, exist_ok=True)
     count, processed_hash = 0, hashlib.sha256()
-    cleanup = SourceCleanup(settings.flat_cleanup) if settings.flat_cleanup else None
+    cleanup = None
+    if settings.flat_cleanup:
+        if settings.flat_cleanup_mode == "multiscale":
+            cleanup = MultiscaleSourceCleanup(
+                fine_strength=settings.flat_cleanup,
+                coarse_strength=settings.flat_cleanup_coarse_strength,
+                sigma=settings.flat_cleanup_sigma,
+            )
+        else:
+            cleanup = SourceCleanup(settings.flat_cleanup)
     cleanup_options = {} if cleanup is None else {"source_cleanup": cleanup}
     with tempfile.TemporaryDirectory(prefix=".luma-fatal-", dir=destination.parent) as directory:
         temporary = Path(directory) / "video.mp4"
@@ -441,12 +450,18 @@ def process_video(
             record["source_cleanup"] = dict(
                 frames=cleanup.frames, mask_resets=cleanup.resets,
                 seconds=cleanup.seconds, guide_max_edge=384,
+                mode=settings.flat_cleanup_mode,
                 policy="soft source mask, guided floating RGB/luminance, no temporal RGB averaging",
             )
         if config_path is not None:
             record["config_source"] = dict(
                 path=str(config_path), sha256=_digest(config_path)
             )
+            inherited = Config.source_paths(config_path)[1:]
+            if inherited:
+                record["config_source"]["inherits"] = [
+                    dict(path=str(path), sha256=_digest(path)) for path in inherited
+                ]
         temporary_meta.write_text(
             json.dumps(record, indent=2, allow_nan=False) + "\n", encoding="utf-8"
         )

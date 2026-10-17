@@ -1,0 +1,4 @@
+# Fattal 1 compressed preset with scale-separated source cleanup.
+extends: fattal-1-compressed.yaml
+video:
+  flat_cleanup_mode: multiscale

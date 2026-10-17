@@ -7,7 +7,7 @@ from numbers import Real
 
 import numpy as np
 from numba import njit
-from scipy.ndimage import gaussian_filter, maximum_filter, uniform_filter
+from scipy.ndimage import gaussian_filter, map_coordinates, maximum_filter, uniform_filter
 
 
 def _smoothstep(low, high, values):
@@ -205,3 +205,83 @@ class SourceCleanup:
         self.frames += 1
         self.seconds += time.perf_counter() - start
         return result
+
+
+class MultiscaleSourceCleanup:
+    """Apply stronger broad corrections while retaining more fine source detail.
+
+    The existing full-strength cleanup supplies a bounded correction and soft
+    mask. A normalized Gaussian split gives broad and fine strengths without
+    processing independent patches. The mask retains its existing history.
+    Sigma is measured in effect working pixels.
+    """
+
+    def __init__(self, fine_strength=0.75, coarse_strength=1.0, sigma=1.2):
+        for name, value in (("fine_strength", fine_strength),
+                            ("coarse_strength", coarse_strength)):
+            if (isinstance(value, bool) or not isinstance(value, Real)
+                    or not np.isfinite(value) or not 0 <= value <= 1):
+                raise ValueError(f"{name} must be finite and between 0 and 1")
+        if (isinstance(sigma, bool) or not isinstance(sigma, Real)
+                or not np.isfinite(sigma) or not 0.01 <= sigma <= 16):
+            raise ValueError("sigma must be finite and between 0.01 and 16")
+        self.fine_strength = float(fine_strength)
+        self.coarse_strength = float(coarse_strength)
+        self.sigma = float(sigma)
+        self.cleanup = SourceCleanup(1.0)
+        self.mask = None
+        self.seconds = 0.0
+
+    @property
+    def frames(self):
+        return self.cleanup.frames
+
+    @property
+    def resets(self):
+        return self.cleanup.resets
+
+    def __call__(self, rgb, reference_luminance):
+        start = time.perf_counter()
+        clean_rgb, clean_luminance = self.cleanup(rgb, reference_luminance)
+        height, width = rgb.shape[:2]
+        factor = max(1, (max(height, width) + 383) // 384)
+        y, x = np.meshgrid(
+            (np.arange(height, dtype=np.float32) + 0.5) / factor - 0.5,
+            (np.arange(width, dtype=np.float32) + 0.5) / factor - 0.5,
+            indexing="ij",
+        )
+        self.mask = np.clip(map_coordinates(
+            self.cleanup.mask, (y, x), order=1, mode="nearest", prefilter=False,
+        ), 0, 1)
+        original = np.concatenate((
+            rgb.astype(np.float32), (reference_luminance * 255)[..., None],
+        ), axis=2)
+        cleaned = np.concatenate((
+            clean_rgb, (clean_luminance * 255)[..., None],
+        ), axis=2)
+        correction = cleaned - original
+        denominator = np.maximum(
+            gaussian_filter(self.mask, self.sigma, mode="reflect"), 1e-6,
+        )
+        broad = gaussian_filter(
+            correction, (self.sigma, self.sigma, 0), mode="reflect",
+        ) * (self.mask / denominator)[..., None]
+        correction = (
+            self.fine_strength * correction
+            + (self.coarse_strength - self.fine_strength) * broad
+        )
+        # Luminance also accounts for the original half-byte rounding error.
+        limit = self.mask[..., None] * np.array([4, 4, 4, 4.5], np.float32)
+        result = np.clip(original + np.clip(correction, -limit, limit), 0, 255)
+        result_rgb = result[..., :3].copy()
+        result_luminance = result[..., 3] / np.float32(255)
+        # Preserve zero-mask pixels exactly, including rounded luminance.
+        protected = self.mask == 0
+        result_rgb[protected] = rgb[protected]
+        result_luminance[protected] = reference_luminance[protected]
+        if self.fine_strength == self.coarse_strength == 0:
+            output = rgb.astype(np.float32), reference_luminance.copy()
+        else:
+            output = result_rgb, result_luminance
+        self.seconds += time.perf_counter() - start
+        return output
