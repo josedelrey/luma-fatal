@@ -134,6 +134,8 @@ class FilterParams:
     output_gamma: float = 1.0
     tone_strength: float = 100
     highlight_compression: float = 0
+    black_level: float = 0
+    white_level: float = 100
 
     def __post_init__(self):
         for name, value in asdict(self).items():
@@ -148,6 +150,8 @@ class FilterParams:
                 raise ValueError(f"{name} must be finite and between 0 and 100")
         if self.alpha == 0:
             raise ValueError("alpha must be greater than zero")
+        if self.black_level >= self.white_level:
+            raise ValueError("black_level must be below white_level")
         _finite("output_gamma", self.output_gamma, 0, math.inf, exclusive_min=True)
         if not math.isfinite(1.0 / self.output_gamma):
             raise ValueError("output_gamma must have a finite reciprocal")

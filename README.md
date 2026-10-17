@@ -249,6 +249,8 @@ the configuration file. The bundled configurations are:
 
 `alpha`, `beta`, `saturation`, `noise`, `fade`, `tone_strength`, and
 `highlight_compression` use a 0–100 scale, with `alpha` strictly positive.
+`black_level` and `white_level` are output percentages on the same scale,
+with black strictly below white.
 `alpha` and `beta` control gradient attenuation, `saturation`
 controls color recombination, and `noise` adds an offset in the attenuation
 calculation. `fade: 0` applies the
@@ -290,6 +292,8 @@ New controls are opt-in and retain the original preset output when disabled.
 | `parameters.output_gamma` | `1.0` | Apply the curve `x^(1/gamma)` to clipped, normalized filtered RGB |
 | `parameters.tone_strength` | `100` | Blend original and filtered brightness before color reconstruction |
 | `parameters.highlight_compression` | `0` | Roll off bright RGB peaks together before clipping, retaining their color ratios |
+| `parameters.black_level` | `0` | Output black endpoint as a percentage of white |
+| `parameters.white_level` | `100` | Output white endpoint as a percentage of white |
 
 `tone_strength` controls how strongly the filter changes brightness in images
 and video. `100` retains the full effect. `0` uses original source brightness,
@@ -334,6 +338,30 @@ color from the filter's floating output and cannot restore highlights already
 clipped in the input. Nonfinite pixels retain the existing quantization policy.
 The curve is fixed across frames and adds no temporal state. Like output gamma,
 it runs at working resolution before enlargement.
+
+`black_level` and `white_level` set the filtered result's output range for
+images and video. Defaults `0` and `100` preserve the reference output.
+For a softer range, try `--black-level 5 --white-level 95`, or set
+`parameters.black_level: 5` and `parameters.white_level: 95`. These values
+lift black to approximately RGB 13 and lower white to approximately RGB 242:
+
+```bash
+uv run --locked luma-fatal video local_inputs/input.mp4 outputs/softer-range.mp4 --config configs/fattal-1-compressed-noise.yaml --black-level 5 --white-level 95
+```
+
+Each clipped floating RGB channel is linearly mapped into the requested range
+after tone strength, highlight compression, output gamma and shadow protection,
+before its first RGB8 quantization. Protected shadows and completely black
+frames also receive the output levels. The same offset and scale apply to every
+channel. A raised black endpoint introduces a gray component and can reduce
+color saturation. This remapping cannot restore details already lost to clipping.
+
+The levels run at working resolution before enlargement. Fade blends original
+RGB afterward, so a positive Fade can bring values outside the selected range.
+`fade: 100` bypasses the effect, including output levels. Endpoints are rounded
+to the nearest representable RGB8 value. JPEG and video encoding can also alter
+the decoded range slightly. Black must be strictly below white, and both must
+be finite percentages from 0 to 100.
 
 `detail_level` is a nonnegative integer. It excludes fine scales while
 `pyramid_min_size` controls the coarsest scale. Retained attenuation fields are
