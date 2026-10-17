@@ -8,6 +8,20 @@ The project emphasizes reproducible numerical behavior. Image preparation,
 filtering, and encoding are configured separately, and file-based runs save
 the resolved settings and implementation fingerprints alongside each output.
 
+| Original | Fattal 1 | Fattal 2 |
+| :---: | :---: | :---: |
+| ![input](assets/lantern-garden-original.png) | ![Fattal 1 result](assets/lantern-garden-fattal-1.png) | ![Fattal 2 result](assets/lantern-garden-fattal-2.png) |
+
+*Final Fantasy XIV*, from [Acerola's graphics showcase at 24:03](https://www.youtube.com/watch?v=jJnwzkBre8Y&t=1443s).
+The input is a reconstruction of a centered portrait crop, with
+invented fine detail. Both filters use this same input and the reference presets,
+exported as full-resolution PNGs.
+Image credit: Acerola, game imagery by Square Enix.
+
+The [input](assets/lantern-garden-original.png) and
+[source record](examples/lantern-garden.json) are bundled. Rebuild the comparison
+after installation with `uv run --locked python scripts/build_readme_comparison.py --output outputs/readme-comparison-new`.
+
 ## Method
 
 Both filters modify the gradients of log luminance, reconstruct a luminance
