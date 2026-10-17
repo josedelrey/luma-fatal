@@ -132,6 +132,7 @@ class FilterParams:
     noise: float = 0
     fade: float = 50
     output_gamma: float = 1.0
+    tone_strength: float = 100
 
     def __post_init__(self):
         for name, value in asdict(self).items():

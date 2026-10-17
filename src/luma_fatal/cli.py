@@ -339,6 +339,9 @@ def main(argv: list[str] | None = None) -> None:
                 help=(
                     f"Positive output gamma, x^(1/gamma), default {default:g}"
                     if name == "output_gamma"
+                    else "Blend source and filtered brightness before color reconstruction, "
+                    "0 to 100, default 100"
+                    if name == "tone_strength"
                     else f"Parameter scale 0..100, default {default:g}"
                 ),
             )

@@ -247,7 +247,7 @@ the configuration file. The bundled configurations are:
 | [`configs/fattal-1-compressed-fbm.yaml`](configs/fattal-1-compressed-fbm.yaml) | Fattal 1 with masked fBm-like noise 0.75 |
 | [`configs/fattal-2-compressed-fbm.yaml`](configs/fattal-2-compressed-fbm.yaml) | Fattal 2 with masked fBm-like noise 0.75 |
 
-`alpha`, `beta`, `saturation`, `noise`, and `fade` use a 0–100 scale, with `alpha`
+`alpha`, `beta`, `saturation`, `noise`, `fade`, and `tone_strength` use a 0–100 scale, with `alpha`
 strictly positive. `alpha` and `beta` control gradient attenuation, `saturation`
 controls color recombination, and `noise` adds an offset in the attenuation
 calculation. `fade: 0` applies the
@@ -287,6 +287,28 @@ New controls are opt-in and retain the original preset output when disabled.
 | `numerics.luminance_mode` | `rounded` | Use `fractional` to retain sub-byte luminance through the filter |
 | `processing.working_resampler` | `nearest` | Select `nearest`, `bilinear`, or `bicubic` working-resolution sampling |
 | `parameters.output_gamma` | `1.0` | Apply the curve `x^(1/gamma)` to clipped, normalized filtered RGB |
+| `parameters.tone_strength` | `100` | Blend original and filtered brightness before color reconstruction |
+
+`tone_strength` controls how strongly the filter changes brightness in images
+and video. `100` retains the full effect. `0` uses original source brightness,
+with saturation, source cleanup or noise, output gamma, shadow protection and
+Fade still taking effect. Intermediate values blend source and filtered
+luminance before color reconstruction, RGB clipping and quantization.
+This can reduce the dominance of deep black and bright white areas while
+retaining more original shading. It does not guarantee that highlights avoid
+clipping. Try `--tone-strength 60` or set `parameters.tone_strength: 60`:
+
+```bash
+uv run --locked luma-fatal video local_inputs/input.mp4 outputs/gentler-tones.mp4 --config configs/fattal-1-compressed-noise.yaml --tone-strength 60
+```
+
+Tone strength is applied at working resolution before enlargement. The source
+brightness uses the selected rounded or fractional reference luminance from
+before cleanup or noise. Fade instead blends already filtered RGB with original
+RGB at the output resolution. A tone strength of 100 skips the new blend and
+preserves the reference output. At intermediate strengths, nonfinite mapped
+brightness uses white for NaN or positive infinity and black for negative
+infinity. A strength of 0 ignores mapped brightness entirely.
 
 `detail_level` is a nonnegative integer. It excludes fine scales while
 `pyramid_min_size` controls the coarsest scale. Retained attenuation fields are

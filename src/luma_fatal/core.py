@@ -306,7 +306,17 @@ def _recombine(
     shadow_softness: int = 0,
     color_rgb: np.ndarray | None = None,
     shadow_luminance: np.ndarray | None = None,
+    tone_strength: float = 100,
 ) -> np.ndarray:
+    if tone_strength < 100:
+        source_luminance = luminance if shadow_luminance is None else shadow_luminance
+        if tone_strength == 0:
+            mapped = source_luminance
+        else:
+            # Degenerate normalization maps to white on the reference path.
+            target = np.nan_to_num(mapped, nan=1.0, posinf=1.0, neginf=0.0)
+            amount = np.float32(tone_strength) / np.float32(100)
+            mapped = source_luminance + amount * (target - source_luminance)
     # Keep color powers in float64 through final RGB scaling.
     original_scale = luminance * np.float32(255)
     ratio = np.divide(
@@ -395,6 +405,7 @@ def apply_core(
                     numerics.shadow_softness,
                     color_rgb,
                     shadow_luminance,
+                    params.tone_strength,
                 )
                 # Opaque Normal Fade uses nearest rounding with downward ties.
                 amount = np.float32(params.fade) / np.float32(100)
