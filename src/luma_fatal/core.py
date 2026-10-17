@@ -295,6 +295,30 @@ def _quantize_smooth_shadows(
     return output
 
 
+@njit(cache=True)
+def _compress_highlights(rgb: np.ndarray, strength: float) -> np.ndarray:
+    """Roll bright RGB peaks off with a common gain before channel clipping."""
+    result = np.empty_like(rgb)
+    amount = strength / 100.0
+    knee = 0.75 * 255.0
+    headroom = 255.0 - knee
+    for y in range(rgb.shape[0]):
+        for x in range(rgb.shape[1]):
+            peak = max(rgb[y, x, 0], rgb[y, x, 1], rgb[y, x, 2])
+            finite = (np.isfinite(rgb[y, x, 0]) and np.isfinite(rgb[y, x, 1])
+                      and np.isfinite(rgb[y, x, 2]))
+            if finite and peak > knee and amount > 0:
+                excess = peak - knee
+                compressed = knee + headroom / (1.0 + headroom / excess)
+                target = (1.0 - amount) * peak + amount * compressed
+                for channel in range(3):
+                    result[y, x, channel] = (rgb[y, x, channel] / peak) * target
+            else:
+                for channel in range(3):
+                    result[y, x, channel] = rgb[y, x, channel]
+    return result
+
+
 def _recombine(
     rgb: np.ndarray,
     luminance: np.ndarray,
@@ -307,6 +331,7 @@ def _recombine(
     color_rgb: np.ndarray | None = None,
     shadow_luminance: np.ndarray | None = None,
     tone_strength: float = 100,
+    highlight_compression: float = 0,
 ) -> np.ndarray:
     if tone_strength < 100:
         source_luminance = luminance if shadow_luminance is None else shadow_luminance
@@ -327,6 +352,8 @@ def _recombine(
     )
     chroma = power64(ratio, np.float32(saturation) / np.float32(100), power_mode)
     result = chroma * (mapped * np.float32(255)).astype(np.float64)[..., None]
+    if highlight_compression > 0:
+        result = _compress_highlights(result, highlight_compression)
     if output_gamma != 1.0:
         # Apply the curve to filtered RGB before byte quantization and fade.
         unit = np.maximum(np.fmin(result, 255), 0) / 255
@@ -406,6 +433,7 @@ def apply_core(
                     color_rgb,
                     shadow_luminance,
                     params.tone_strength,
+                    params.highlight_compression,
                 )
                 # Opaque Normal Fade uses nearest rounding with downward ties.
                 amount = np.float32(params.fade) / np.float32(100)

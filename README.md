@@ -247,8 +247,9 @@ the configuration file. The bundled configurations are:
 | [`configs/fattal-1-compressed-fbm.yaml`](configs/fattal-1-compressed-fbm.yaml) | Fattal 1 with masked fBm-like noise 0.75 |
 | [`configs/fattal-2-compressed-fbm.yaml`](configs/fattal-2-compressed-fbm.yaml) | Fattal 2 with masked fBm-like noise 0.75 |
 
-`alpha`, `beta`, `saturation`, `noise`, `fade`, and `tone_strength` use a 0–100 scale, with `alpha`
-strictly positive. `alpha` and `beta` control gradient attenuation, `saturation`
+`alpha`, `beta`, `saturation`, `noise`, `fade`, `tone_strength`, and
+`highlight_compression` use a 0–100 scale, with `alpha` strictly positive.
+`alpha` and `beta` control gradient attenuation, `saturation`
 controls color recombination, and `noise` adds an offset in the attenuation
 calculation. `fade: 0` applies the
 full effect, while `fade: 100` bypasses the effect. Image preparation still
@@ -288,6 +289,7 @@ New controls are opt-in and retain the original preset output when disabled.
 | `processing.working_resampler` | `nearest` | Select `nearest`, `bilinear`, or `bicubic` working-resolution sampling |
 | `parameters.output_gamma` | `1.0` | Apply the curve `x^(1/gamma)` to clipped, normalized filtered RGB |
 | `parameters.tone_strength` | `100` | Blend original and filtered brightness before color reconstruction |
+| `parameters.highlight_compression` | `0` | Roll off bright RGB peaks together before clipping, retaining their color ratios |
 
 `tone_strength` controls how strongly the filter changes brightness in images
 and video. `100` retains the full effect. `0` uses original source brightness,
@@ -309,6 +311,29 @@ RGB at the output resolution. A tone strength of 100 skips the new blend and
 preserves the reference output. At intermediate strengths, nonfinite mapped
 brightness uses white for NaN or positive infinity and black for negative
 infinity. A strength of 0 ignores mapped brightness entirely.
+
+`highlight_compression` controls a smooth highlight roll-off for both images
+and video. `0` disables it and preserves the reference output. `100` applies the
+full roll-off, with intermediate values blending toward it. Try
+`--highlight-compression 60` or set `parameters.highlight_compression: 60`:
+
+```bash
+uv run --locked luma-fatal video local_inputs/input.mp4 outputs/softer-highlights.mp4 --config configs/fattal-1-compressed-noise.yaml --tone-strength 60 --highlight-compression 60
+```
+
+Compression acts on reconstructed floating RGB after tone strength and
+saturation, before output gamma, clipping, shadow protection and Fade. Pixels
+whose brightest channel is at or below 75 percent of white are unchanged.
+Above that knee, a rational curve gradually approaches white. All channels
+receive the same scale, preserving their ratios during compression. Output
+gamma and quantization can subsequently change those ratios.
+
+At full strength, finite nonnegative RGB peaks stay within the output range.
+Partial strengths can still clip very bright values. The control preserves
+color from the filter's floating output and cannot restore highlights already
+clipped in the input. Nonfinite pixels retain the existing quantization policy.
+The curve is fixed across frames and adds no temporal state. Like output gamma,
+it runs at working resolution before enlargement.
 
 `detail_level` is a nonnegative integer. It excludes fine scales while
 `pyramid_min_size` controls the coarsest scale. Retained attenuation fields are
