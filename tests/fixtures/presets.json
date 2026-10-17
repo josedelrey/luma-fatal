@@ -13,7 +13,8 @@
           "saturation": 100,
           "noise": 0,
           "fade": 0,
-          "output_gamma": 1.0
+          "output_gamma": 1.0,
+          "tone_strength": 100
         },
         "processing": {
           "device_class": "medium",
@@ -68,7 +69,8 @@
           "saturation": 100,
           "noise": 0,
           "fade": 0,
-          "output_gamma": 1.0
+          "output_gamma": 1.0,
+          "tone_strength": 100
         },
         "processing": {
           "device_class": "medium",
