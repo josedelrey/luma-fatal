@@ -319,6 +319,46 @@ def _compress_highlights(rgb: np.ndarray, strength: float) -> np.ndarray:
     return result
 
 
+@njit(cache=True)
+def _quantize_output_levels(
+    rgb, filtered, reference_luminance, shadow_threshold, shadow_softness,
+    black_level, white_level,
+):
+    """Map the shadow-protected effect into its output range before quantization."""
+    black = black_level * 255.0 / 100.0
+    span = (white_level - black_level) / 100.0
+    lower = max(0, shadow_threshold - shadow_softness)
+    upper = min(255, shadow_threshold + shadow_softness)
+    output = np.empty(rgb.shape, np.uint8)
+    for y in range(rgb.shape[0]):
+        for x in range(rgb.shape[1]):
+            if shadow_softness:
+                luminance = (
+                    4899 * np.float64(rgb[y, x, 0])
+                    + 9617 * np.float64(rgb[y, x, 1])
+                    + 1868 * np.float64(rgb[y, x, 2])
+                ) / 16384
+            else:
+                luminance = reference_luminance[y, x] * np.float32(255)
+            weight = 1.0
+            if luminance <= lower:
+                weight = 0.0
+            elif luminance < upper:
+                t = (luminance - lower) / (upper - lower)
+                weight = t * t * (3 - 2 * t)
+            for channel in range(3):
+                value = np.float64(rgb[y, x, channel])
+                if weight > 0:
+                    candidate = filtered[y, x, channel]
+                    if np.isnan(candidate) or candidate > 255:
+                        candidate = 255.0
+                    elif candidate < 0:
+                        candidate = 0.0
+                    value += weight * (candidate - value)
+                output[y, x, channel] = np.uint8(black + span * value + 0.5)
+    return output
+
+
 def _recombine(
     rgb: np.ndarray,
     luminance: np.ndarray,
@@ -332,6 +372,8 @@ def _recombine(
     shadow_luminance: np.ndarray | None = None,
     tone_strength: float = 100,
     highlight_compression: float = 0,
+    black_level: float = 0,
+    white_level: float = 100,
 ) -> np.ndarray:
     if tone_strength < 100:
         source_luminance = luminance if shadow_luminance is None else shadow_luminance
@@ -358,6 +400,12 @@ def _recombine(
         # Apply the curve to filtered RGB before byte quantization and fade.
         unit = np.maximum(np.fmin(result, 255), 0) / 255
         result = np.power(unit, 1.0 / output_gamma) * 255
+    if black_level != 0 or white_level != 100:
+        reference = luminance if shadow_luminance is None else shadow_luminance
+        return _quantize_output_levels(
+            rgb, result, reference, shadow_threshold, shadow_softness,
+            black_level, white_level,
+        )
     if shadow_softness:
         return _quantize_smooth_shadows(rgb, result, shadow_threshold, shadow_softness)
     result = result + 0.5
@@ -375,11 +423,19 @@ def apply_core(
     """Apply the effect to decoded pixels with no file or resizing policies."""
     result = array.copy()
     if params.fade < 100:
+        filtered = None
+        levels_active = params.black_level != 0 or params.white_level != 100
         if min(array.shape[:2]) < 2:
             warnings.warn(
                 "One-pixel-wide images use an identity extension of the solver",
                 RuntimeWarning,
             )
+            if levels_active:
+                rgb = np.ascontiguousarray(array[..., :3])
+                filtered = _quantize_output_levels(
+                    rgb, rgb, np.zeros(rgb.shape[:2], np.float32), 0, 0,
+                    params.black_level, params.white_level,
+                )
         else:
             rgb = np.ascontiguousarray(array[..., :3])
             if numerics.luminance_mode == "fractional":
@@ -434,14 +490,22 @@ def apply_core(
                     shadow_luminance,
                     params.tone_strength,
                     params.highlight_compression,
+                    params.black_level,
+                    params.white_level,
                 )
-                # Opaque Normal Fade uses nearest rounding with downward ties.
-                amount = np.float32(params.fade) / np.float32(100)
-                mixed = (
-                    filtered.astype(np.float32) * (np.float32(1) - amount)
-                    + rgb.astype(np.float32) * amount
+            elif levels_active:
+                filtered = _quantize_output_levels(
+                    rgb, rgb, np.zeros(rgb.shape[:2], np.float32), 0, 0,
+                    params.black_level, params.white_level,
                 )
-                result[..., :3] = np.clip(
-                    np.ceil(mixed - np.float32(0.5)), 0, 255
-                ).astype(np.uint8)
+        if filtered is not None:
+            # Opaque Normal Fade uses nearest rounding with downward ties.
+            amount = np.float32(params.fade) / np.float32(100)
+            mixed = (
+                filtered.astype(np.float32) * (np.float32(1) - amount)
+                + rgb.astype(np.float32) * amount
+            )
+            result[..., :3] = np.clip(
+                np.ceil(mixed - np.float32(0.5)), 0, 255
+            ).astype(np.uint8)
     return result

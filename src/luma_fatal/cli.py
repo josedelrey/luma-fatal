@@ -342,6 +342,8 @@ def main(argv: list[str] | None = None) -> None:
                     "reconstruction, 0 to 100, default 100",
                     "highlight_compression": "Compress bright RGB peaks before clipping, "
                     "0 to 100, default 0",
+                    "black_level": "Output black level as a percentage, 0 to 100, default 0",
+                    "white_level": "Output white level as a percentage, 0 to 100, default 100",
                 }.get(name, f"Parameter scale 0..100, default {default:g}"),
             )
         command.add_argument(
