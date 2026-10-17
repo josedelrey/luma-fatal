@@ -367,6 +367,8 @@ def test_cli_loads_config_and_applies_overrides(tmp_path, tools, capsys):
     assert record["video_configuration"] == {
         "crf": 23, "preset": "ultrafast", "deblock": "weak8", "deband": "off",
         "flat_cleanup": 0.0,
+        "flat_cleanup_mode": "standard", "flat_cleanup_coarse_strength": 1.0,
+        "flat_cleanup_sigma": 1.2,
     }
     assert record["config_source"]["sha256"] == hashlib.sha256(config.read_bytes()).hexdigest()
     assert record["padding"]["right"] == record["padding"]["bottom"] == 0

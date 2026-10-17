@@ -70,7 +70,8 @@ uv run --locked luma-fatal video local_inputs/input.mp4 outputs/stylized.mp4 --c
 ```
 
 For compressed inputs, the paired presets enable smooth shadows and gentle
-debanding while retaining the original Fattal parameters:
+debanding with standard smooth-area cleanup at strength 0.75 while retaining
+the original Fattal parameters:
 
 ```bash
 uv run --locked luma-fatal video local_inputs/videos/four-people.mp4 outputs/four-people-compressed.mp4 --config configs/fattal-1-compressed.yaml --progress
@@ -82,6 +83,19 @@ reduces the coarse patches visible in the Tears of Steel sample, where weak
 deblocking made little visible difference. The compressed presets retain rounded
 luminance because the fractional-luminance experiment gave little visible
 improvement to the block patches.
+
+The multiscale presets inherit these settings and strengthen the broad part of
+the cleanup correction while retaining more fine source variation:
+
+```bash
+uv run --locked luma-fatal video local_inputs/videos/four-people.mp4 outputs/four-people-multiscale.mp4 --config configs/fattal-1-compressed-multiscale.yaml --progress
+```
+
+Use `configs/fattal-2-compressed-multiscale.yaml` for Fattal 2. Both preset
+files use `extends` to load their compressed parent from the same directory.
+The resolved settings and parent file fingerprint are recorded in video metadata.
+Multiscale cleanup is slower and can retain some jagged contour fragments along
+with desirable texture. Compare moving footage before choosing a preset.
 
 To process the complete Tears of Steel clip with Fattal 1 and see frames per
 second and an estimated time remaining:
@@ -124,15 +138,25 @@ quantization patches, though fine texture and frame-to-frame variation may
 change. It is video-only and defaults to `off` in the original presets. Both
 source filters can be combined.
 
-For additional cleanup in smooth source areas, try `--flat-cleanup 0.25`:
+Override smooth-area cleanup strength with `--flat-cleanup`:
 
 ```bash
-uv run --locked luma-fatal video local_inputs/videos/tears-of-steel.mp4 outputs/tears-of-steel-cleanup.mp4 --config configs/fattal-1-compressed.yaml --flat-cleanup 0.25 --progress
+uv run --locked luma-fatal video local_inputs/videos/tears-of-steel.mp4 outputs/tears-of-steel-cleanup.mp4 --config configs/fattal-1-compressed.yaml --flat-cleanup 0.5 --progress
 ```
 
 The matching configuration setting is `video.flat_cleanup`, a strength from
-0 to 1. It defaults to 0 in every bundled preset, retaining their existing
-media output. Start at 0.25 and compare moving footage before increasing it.
+0 to 1. It is 0 in the reference and general presets and 0.75 in the
+compressed presets. Set it to 0 to disable cleanup in any video preset.
+
+`--flat-cleanup-mode multiscale` selects the scale-separated correction without
+changing the other settings. In this mode, `flat_cleanup` controls fine-detail
+strength. `--flat-cleanup-coarse-strength` controls broad correction strength
+from 0 to 1, and `--flat-cleanup-sigma` sets its Gaussian radius in effect
+working pixels from 0.01 to 16. Their configuration keys are
+`video.flat_cleanup_coarse_strength` and `video.flat_cleanup_sigma`. The
+multiscale presets use 0.75 fine strength, 1.0 broad strength, and sigma 1.2.
+The standard mode ignores the broad-strength and sigma values. The feature
+changes luminance and RGB before the Fattal effect, and does not add grain.
 
 Cleanup detects smooth regions from decoded source RGB after any FFmpeg
 deblocking/debanding and at the effect's working resolution. It combines
@@ -191,6 +215,8 @@ the configuration file. The bundled configurations are:
 | [`configs/fattal-2.yaml`](configs/fattal-2.yaml) | Complete Fattal 2 reference preset with fade 0 |
 | [`configs/fattal-1-compressed.yaml`](configs/fattal-1-compressed.yaml) | Fattal 1 with smooth shadows and gentle video debanding |
 | [`configs/fattal-2-compressed.yaml`](configs/fattal-2-compressed.yaml) | Fattal 2 with smooth shadows and gentle video debanding |
+| [`configs/fattal-1-compressed-multiscale.yaml`](configs/fattal-1-compressed-multiscale.yaml) | Fattal 1 compressed preset with multiscale cleanup |
+| [`configs/fattal-2-compressed-multiscale.yaml`](configs/fattal-2-compressed-multiscale.yaml) | Fattal 2 compressed preset with multiscale cleanup |
 
 `alpha`, `beta`, `saturation`, `noise`, and `fade` use a 0–100 scale, with `alpha`
 strictly positive. `alpha` and `beta` control gradient attenuation, `saturation`
