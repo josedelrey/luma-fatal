@@ -274,6 +274,10 @@ class VideoConfig:
     flat_cleanup_mode: str = "standard"
     flat_cleanup_coarse_strength: float = 1.0
     flat_cleanup_sigma: float = 1.2
+    pre_noise_rms: float = 0.0
+    pre_noise_kind: str = "highpass"
+    pre_noise_masked: bool = True
+    pre_noise_seed: int = 20261017
 
     def __post_init__(self):
         if type(self.crf) is not int or not 0 <= self.crf <= 51:
@@ -293,6 +297,11 @@ class VideoConfig:
         _finite("video flat_cleanup_coarse_strength",
                 self.flat_cleanup_coarse_strength, 0, 1)
         _finite("video flat_cleanup_sigma", self.flat_cleanup_sigma, 0.01, 16)
+        _finite("video pre_noise_rms", self.pre_noise_rms, 0, 4)
+        _choice("video pre_noise_kind", self.pre_noise_kind, ("highpass", "fbm"))
+        if not isinstance(self.pre_noise_masked, bool):
+            raise ValueError("video pre_noise_masked must be a boolean")
+        _integer("video pre_noise_seed", self.pre_noise_seed, 0)
 
 
 @dataclass(frozen=True)

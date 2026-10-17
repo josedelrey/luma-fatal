@@ -1,9 +1,12 @@
 # Noise before the filter
 
-This opt-in experiment tests whether small source perturbations make amplified
-block and shading boundaries less conspicuous. It does not modify production
-presets, configuration, or the video CLI. The existing experiment runner provides
-still, synthetic, short video and timing comparisons.
+This study tests whether small source perturbations make amplified block and
+shading boundaries less conspicuous. The implementation is available through
+the video CLI and four optional presets: `fattal-{1,2}-compressed-noise.yaml`
+for cleanup 0.75 plus high-pass noise 0.35, and
+`fattal-{1,2}-compressed-fbm.yaml` for masked fBm-like noise 0.75 with cleanup off.
+The experiment runner provides still, synthetic, short video and timing
+comparisons using the same runtime implementation.
 
 ## Method
 
@@ -84,7 +87,7 @@ uv run python experiments/investigate_prenoise.py synthetic \
   --cases off current075 highpass035 highpass075 fbm075 clean075-highpass035 \
   --output outputs/prenoise-synthetic-new
 
-uv run python -m pytest -q experiments/test_prenoise.py \
+uv run python -m pytest -q tests/test_prenoise.py \
   tests/test_cleanup.py tests/test_multiscale_cleanup.py
 ```
 
@@ -96,7 +99,8 @@ input and source hashes, timings and sampled pre-encoding PNGs. Adjacent-frame
 differences include motion and are not flicker scores.
 
 Local outputs are under ignored `outputs/prenoise/`: `portrait-still`,
-`portrait-fattal2`, `synthetic` and `portrait-motion`. The experiment and its
-tests are excluded from release distributions. The 26 noise tests and 60
-existing cleanup tests pass, covering range bounds, mask protection, unchanged
-zero-noise behavior, stable repeated frames, noise spectra, Fade and shadows.
+`portrait-fattal2`, `synthetic` and `portrait-motion`. Experiment scripts are
+excluded from release distributions. Runtime code and its tests are included.
+Checks cover range bounds, mask protection, unchanged zero-noise behavior,
+stable repeated frames, noise spectra, Fade, shadows, configuration validation
+and CLI processing with all four presets.

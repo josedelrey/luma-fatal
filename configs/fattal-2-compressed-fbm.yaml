@@ -1,0 +1,9 @@
+# Fattal 2 with masked fBm-like noise 0.75 and cleanup disabled.
+extends: fattal-2-compressed.yaml
+video:
+  flat_cleanup: 0.0
+  flat_cleanup_mode: standard
+  pre_noise_rms: 0.75
+  pre_noise_kind: fbm
+  pre_noise_masked: true
+  pre_noise_seed: 20261017

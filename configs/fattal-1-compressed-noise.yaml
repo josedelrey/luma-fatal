@@ -1,0 +1,9 @@
+# Fattal 1 with standard cleanup 0.75 and fine masked noise 0.35.
+extends: fattal-1-compressed.yaml
+video:
+  flat_cleanup: 0.75
+  flat_cleanup_mode: standard
+  pre_noise_rms: 0.35
+  pre_noise_kind: highpass
+  pre_noise_masked: true
+  pre_noise_seed: 20261017
