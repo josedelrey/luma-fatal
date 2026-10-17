@@ -8,6 +8,7 @@ parameters:
   fade: 50
   output_gamma: 1.0
   tone_strength: 100
+  highlight_compression: 0
 processing:
   device_class: high
   max_edge: null

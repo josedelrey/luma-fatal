@@ -14,7 +14,8 @@
           "noise": 0,
           "fade": 0,
           "output_gamma": 1.0,
-          "tone_strength": 100
+          "tone_strength": 100,
+          "highlight_compression": 0
         },
         "processing": {
           "device_class": "medium",
@@ -70,7 +71,8 @@
           "noise": 0,
           "fade": 0,
           "output_gamma": 1.0,
-          "tone_strength": 100
+          "tone_strength": 100,
+          "highlight_compression": 0
         },
         "processing": {
           "device_class": "medium",

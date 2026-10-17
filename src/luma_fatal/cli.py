@@ -336,14 +336,13 @@ def main(argv: list[str] | None = None) -> None:
                 "--" + name.replace("_", "-"),
                 type=float,
                 default=None,
-                help=(
-                    f"Positive output gamma, x^(1/gamma), default {default:g}"
-                    if name == "output_gamma"
-                    else "Blend source and filtered brightness before color reconstruction, "
-                    "0 to 100, default 100"
-                    if name == "tone_strength"
-                    else f"Parameter scale 0..100, default {default:g}"
-                ),
+                help={
+                    "output_gamma": f"Positive output gamma, x^(1/gamma), default {default:g}",
+                    "tone_strength": "Blend source and filtered brightness before color "
+                    "reconstruction, 0 to 100, default 100",
+                    "highlight_compression": "Compress bright RGB peaks before clipping, "
+                    "0 to 100, default 0",
+                }.get(name, f"Parameter scale 0..100, default {default:g}"),
             )
         command.add_argument(
             "--detail-level",
