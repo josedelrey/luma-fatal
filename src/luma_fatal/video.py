@@ -24,6 +24,7 @@ from . import __version__
 from .configuration import Config, VideoConfig, resolve_config
 from .cleanup import MultiscaleSourceCleanup, SourceCleanup
 from .pipeline import process_frames
+from .prenoise import SourceNoise
 from .processing import input_size
 
 
@@ -342,7 +343,16 @@ def process_video(
             )
         else:
             cleanup = SourceCleanup(settings.flat_cleanup)
-    cleanup_options = {} if cleanup is None else {"source_cleanup": cleanup}
+    noise = None
+    if settings.pre_noise_rms:
+        noise = SourceNoise(
+            rms=settings.pre_noise_rms, kind=settings.pre_noise_kind,
+            masked=settings.pre_noise_masked, seed=settings.pre_noise_seed,
+            source_cleanup=cleanup,
+        )
+    source_treatment = noise if noise is not None else cleanup
+    cleanup_options = ({} if source_treatment is None
+                       else {"source_cleanup": source_treatment})
     with tempfile.TemporaryDirectory(prefix=".luma-fatal-", dir=destination.parent) as directory:
         temporary = Path(directory) / "video.mp4"
         temporary_meta = Path(directory) / "video.meta.json"
@@ -427,7 +437,7 @@ def process_video(
             discarded_audio_streams=stream["audio_streams"],
             temporal_policy=(
                 "independent effect frames, source cleanup mask history with motion/cut resets"
-                if cleanup is not None else "independent frames, no stabilization"
+                if source_treatment is not None else "independent frames, no stabilization"
             ),
             processed_rgb_sha256=processed_hash.hexdigest(),
             runtime=dict(
@@ -441,7 +451,7 @@ def process_video(
             implementation_sources_sha256={
                 name: _digest(Path(__file__).with_name(name)) for name in (
                     "video.py", "pipeline.py", "configuration.py", "cleanup.py",
-                    "processing.py", "core.py", "numerics.py",
+                    "processing.py", "core.py", "numerics.py", "prenoise.py",
                 )
             },
             seconds=time.perf_counter() - start,
@@ -452,6 +462,14 @@ def process_video(
                 seconds=cleanup.seconds, guide_max_edge=384,
                 mode=settings.flat_cleanup_mode,
                 policy="soft source mask, guided floating RGB/luminance, no temporal RGB averaging",
+            )
+        if noise is not None:
+            record["source_noise"] = dict(
+                rms=settings.pre_noise_rms, kind=settings.pre_noise_kind,
+                masked=settings.pre_noise_masked, seed=settings.pre_noise_seed,
+                frames=noise.frames, mask_resets=noise.resets, seconds=noise.seconds,
+                timing_scope="source cleanup, mask and noise combined",
+                policy="floating RGB/luminance, fixed working-frame field, no motion compensation",
             )
         if config_path is not None:
             record["config_source"] = dict(

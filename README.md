@@ -93,6 +93,16 @@ uv run --locked luma-fatal video local_inputs/videos/four-people.mp4 outputs/fou
 
 Use `configs/fattal-2-compressed-multiscale.yaml` for Fattal 2. Both preset
 files use `extends` to load their compressed parent from the same directory.
+
+Four noise presets reproduce the pre-filter treatments from the noise study.
+`fattal-1-compressed-noise.yaml` and `fattal-2-compressed-noise.yaml` combine
+standard cleanup 0.75 with fine masked noise at 0.35 RMS.
+`fattal-1-compressed-fbm.yaml` and `fattal-2-compressed-fbm.yaml` use masked
+fBm-like noise at 0.75 RMS with cleanup disabled.
+
+```bash
+uv run --locked luma-fatal video local_inputs/videos/four-people.mp4 outputs/four-people-noise.mp4 --config configs/fattal-1-compressed-noise.yaml --progress
+```
 The resolved settings and parent file fingerprint are recorded in video metadata.
 Multiscale cleanup is slower and can retain some jagged contour fragments along
 with desirable texture. Compare moving footage before choosing a preset.
@@ -158,6 +168,21 @@ multiscale presets use 0.75 fine strength, 1.0 broad strength, and sigma 1.2.
 The standard mode ignores the broad-strength and sigma values. The feature
 changes luminance and RGB before the Fattal effect, and does not add grain.
 
+Video source noise is controlled by `--pre-noise-rms` from 0 to 4 in input
+0-255 units and `--pre-noise-kind highpass|fbm`. Their configuration keys are
+`video.pre_noise_rms` and `video.pre_noise_kind`. Noise enters floating RGB and
+luminance after any cleanup and before the Fattal effect. It is restricted to
+the original source's smooth-region mask by default. `--no-pre-noise-masked`
+disables this restriction, and `--pre-noise-seed` selects its deterministic
+field. The corresponding keys are `video.pre_noise_masked` and
+`video.pre_noise_seed`. Set `--pre-noise-rms 0` to disable noise independently
+of cleanup. These settings affect video processing only.
+
+Noise is fixed in working-frame coordinates, without motion compensation.
+Fine noise disguises some contours with grain, while fBm-like noise creates
+broader cloudy variation. The effect can strongly amplify either treatment.
+See the [noise study](experiments/prenoise.md) for comparisons and limitations.
+
 Cleanup detects smooth regions from decoded source RGB after any FFmpeg
 deblocking/debanding and at the effect's working resolution. It combines
 texture at two scales, abrupt-edge protection, and variation inside reduced
@@ -217,6 +242,10 @@ the configuration file. The bundled configurations are:
 | [`configs/fattal-2-compressed.yaml`](configs/fattal-2-compressed.yaml) | Fattal 2 with smooth shadows and gentle video debanding |
 | [`configs/fattal-1-compressed-multiscale.yaml`](configs/fattal-1-compressed-multiscale.yaml) | Fattal 1 compressed preset with multiscale cleanup |
 | [`configs/fattal-2-compressed-multiscale.yaml`](configs/fattal-2-compressed-multiscale.yaml) | Fattal 2 compressed preset with multiscale cleanup |
+| [`configs/fattal-1-compressed-noise.yaml`](configs/fattal-1-compressed-noise.yaml) | Fattal 1 with cleanup 0.75 and fine masked noise 0.35 |
+| [`configs/fattal-2-compressed-noise.yaml`](configs/fattal-2-compressed-noise.yaml) | Fattal 2 with cleanup 0.75 and fine masked noise 0.35 |
+| [`configs/fattal-1-compressed-fbm.yaml`](configs/fattal-1-compressed-fbm.yaml) | Fattal 1 with masked fBm-like noise 0.75 |
+| [`configs/fattal-2-compressed-fbm.yaml`](configs/fattal-2-compressed-fbm.yaml) | Fattal 2 with masked fBm-like noise 0.75 |
 
 `alpha`, `beta`, `saturation`, `noise`, and `fade` use a 0–100 scale, with `alpha`
 strictly positive. `alpha` and `beta` control gradient attenuation, `saturation`

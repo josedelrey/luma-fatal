@@ -369,6 +369,8 @@ def test_cli_loads_config_and_applies_overrides(tmp_path, tools, capsys):
         "flat_cleanup": 0.0,
         "flat_cleanup_mode": "standard", "flat_cleanup_coarse_strength": 1.0,
         "flat_cleanup_sigma": 1.2,
+        "pre_noise_rms": 0.0, "pre_noise_kind": "highpass",
+        "pre_noise_masked": True, "pre_noise_seed": 20261017,
     }
     assert record["config_source"]["sha256"] == hashlib.sha256(config.read_bytes()).hexdigest()
     assert record["padding"]["right"] == record["padding"]["bottom"] == 0

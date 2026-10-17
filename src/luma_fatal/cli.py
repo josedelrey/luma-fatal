@@ -81,6 +81,7 @@ def _settings(args: argparse.Namespace) -> Config:
         for name in (
             "crf", "preset", "deblock", "deband", "flat_cleanup",
             "flat_cleanup_mode", "flat_cleanup_coarse_strength", "flat_cleanup_sigma",
+            "pre_noise_rms", "pre_noise_kind", "pre_noise_masked", "pre_noise_seed",
         )
         if getattr(args, name, None) is not None
     }
@@ -261,6 +262,22 @@ def main(argv: list[str] | None = None) -> None:
     video.add_argument(
         "--flat-cleanup-sigma", type=float, default=None,
         help="Broad correction radius in effect working pixels, 0.01 to 16",
+    )
+    video.add_argument(
+        "--pre-noise-rms", type=float, default=None,
+        help="Noise RMS before Fattal in source 0-255 units, 0 to 4, default 0",
+    )
+    video.add_argument(
+        "--pre-noise-kind", choices=("highpass", "fbm"), default=None,
+        help="Fine high-pass or fBm-like source noise",
+    )
+    video.add_argument(
+        "--pre-noise-masked", action=argparse.BooleanOptionalAction, default=None,
+        help="Restrict source noise to smooth regions, enabled by default",
+    )
+    video.add_argument(
+        "--pre-noise-seed", type=int, default=None,
+        help="Nonnegative seed for the fixed source noise field",
     )
     video.add_argument(
         "--ffmpeg", default="ffmpeg", help="FFmpeg executable with zscale and libx264"
