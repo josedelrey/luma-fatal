@@ -222,8 +222,10 @@ def test_video_deblocking_precedes_filter_and_records_setting(
 
 
 @pytest.mark.parametrize("variant", [1, 2])
-def test_compressed_preset_enables_debanding_and_cli_can_disable_it(
-    tmp_path, tools, capsys, variant,
+@pytest.mark.parametrize("deband", ["gentle", "off"])
+@pytest.mark.parametrize("flat_cleanup", [0.75, 0])
+def test_compressed_preset_video_defaults_and_cli_overrides(
+    tmp_path, tools, capsys, variant, deband, flat_cleanup,
 ):
     source = make_clip(tmp_path / "compressed.mkv", tools)
     preset = (
@@ -235,27 +237,35 @@ def test_compressed_preset_enables_debanding_and_cli_can_disable_it(
         reference_rgb(source, tools, 47, 35, deband="gentle")
         != reference_rgb(source, tools, 47, 35)
     )
-    for deband in ("gentle", "off"):
-        destination = tmp_path / f"{deband}.mp4"
-        command = [
-            "video", str(source), str(destination), "--config", str(preset),
-            "--ffmpeg", tools[0], "--ffprobe", tools[1], "--json",
-        ]
-        if deband == "off":
-            command += ["--deband", "off"]
-        main(command)
-        record = json.loads(capsys.readouterr().out)
-        expected = hashlib.sha256()
-        for frame in reference_rgb(source, tools, 47, 35, deband=deband):
-            filtered = apply_filter(frame, config=config)
-            expected.update(
-                np.pad(filtered, ((0, 1), (0, 1), (0, 0)), mode="edge").tobytes()
-            )
-        assert record["processed_rgb_sha256"] == expected.hexdigest()
-        assert record["video_configuration"]["deblock"] == "off"
-        assert record["video_configuration"]["deband"] == deband
-        assert record["configuration"]["video"]["deband"] == deband
-        assert record["configuration"]["numerics"]["shadow_softness"] == 6
+    destination = tmp_path / "filtered.mp4"
+    command = [
+        "video", str(source), str(destination), "--config", str(preset),
+        "--ffmpeg", tools[0], "--ffprobe", tools[1], "--json",
+    ]
+    if deband == "off":
+        command += ["--deband", "off"]
+    if flat_cleanup == 0:
+        command += ["--flat-cleanup", "0"]
+    main(command)
+    record = json.loads(capsys.readouterr().out)
+    expected = hashlib.sha256()
+    decoded = reference_rgb(source, tools, 47, 35, deband=deband)
+    cleanup = SourceCleanup(flat_cleanup) if flat_cleanup else None
+    for frame in process_frames(decoded, config=config, source_cleanup=cleanup):
+        expected.update(
+            np.pad(frame, ((0, 1), (0, 1), (0, 0)), mode="edge").tobytes()
+        )
+    assert record["processed_rgb_sha256"] == expected.hexdigest()
+    assert record["video_configuration"]["deblock"] == "off"
+    assert record["video_configuration"]["deband"] == deband
+    assert record["configuration"]["video"]["deband"] == deband
+    assert record["video_configuration"]["flat_cleanup"] == flat_cleanup
+    assert record["configuration"]["video"]["flat_cleanup"] == flat_cleanup
+    assert record["configuration"]["numerics"]["shadow_softness"] == 6
+    if flat_cleanup:
+        assert record["source_cleanup"]["frames"] == len(decoded)
+    else:
+        assert "source_cleanup" not in record
 
 
 def test_progress_reports_frames_without_changing_video(tmp_path, tools, capsys):

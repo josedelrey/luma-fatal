@@ -78,7 +78,10 @@ def _settings(args: argparse.Namespace) -> Config:
     }
     video = {
         name: getattr(args, name)
-        for name in ("crf", "preset", "deblock", "deband", "flat_cleanup")
+        for name in (
+            "crf", "preset", "deblock", "deband", "flat_cleanup",
+            "flat_cleanup_mode", "flat_cleanup_coarse_strength", "flat_cleanup_sigma",
+        )
         if getattr(args, name, None) is not None
     }
     return replace(
@@ -246,6 +249,18 @@ def main(argv: list[str] | None = None) -> None:
     video.add_argument(
         "--flat-cleanup", type=float, default=None,
         help="Source-guided cleanup strength in smooth areas, 0 to 1, default 0",
+    )
+    video.add_argument(
+        "--flat-cleanup-mode", choices=("standard", "multiscale"), default=None,
+        help="Select standard or multiscale source-guided cleanup",
+    )
+    video.add_argument(
+        "--flat-cleanup-coarse-strength", type=float, default=None,
+        help="Broad correction strength for multiscale cleanup, 0 to 1",
+    )
+    video.add_argument(
+        "--flat-cleanup-sigma", type=float, default=None,
+        help="Broad correction radius in effect working pixels, 0.01 to 16",
     )
     video.add_argument(
         "--ffmpeg", default="ffmpeg", help="FFmpeg executable with zscale and libx264"
