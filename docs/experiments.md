@@ -2,21 +2,22 @@
 
 [Overview](../README.md) · [Video controls](video.md) · [Experiment scripts](../experiments/)
 
-After [installation](../README.md#install), run commands from the repository root
-and activate the virtual environment once per shell session:
+After [installation](../README.md#install), run the following commands from the
+repository root. Activate the virtual environment once per shell session:
 
 ```bash
 source .venv/bin/activate
 ```
 
-These studies test whether preprocessing reduces compression artifacts amplified
-by the Fattal filters. They are optional visual treatments. Findings below are
-local observations from 2026-10-16 and 2026-10-17, with limited motion validation.
+These studies examine whether preprocessing can reduce compression artifacts
+that the Fattal filters amplify. The treatments are optional. The findings below
+come from local experiments on 2026-10-16 and 2026-10-17, with limited validation
+on moving footage.
 
 ## Multiscale cleanup
 
 The prototype separates the standard masked correction into broad and residual
-components. With correction `D`, mask `m`, and Gaussian filter `G`:
+components. For correction `D`, mask `m`, and Gaussian filter `G`, it computes:
 
 ```text
 broad = m * G(D) / max(G(m), epsilon)
@@ -24,13 +25,15 @@ correction = fine_strength * D + (coarse_strength - fine_strength) * broad
 ```
 
 Candidate A uses fine strength 0.75, coarse strength 1, and sigma 1.2 working
-pixels. Candidate B uses fine strength 0.5 with the same coarse settings. RGB and
-luminance remain floating point, corrections are bounded, and zero-mask pixels
-retain their input. The existing mask history is reused without RGB frame averaging.
+pixels. Candidate B reduces fine strength to 0.5 while keeping the same coarse
+settings. Both retain floating-point RGB and luminance, bound corrections, and
+leave pixels unchanged where the mask is zero. They reuse the existing mask
+history without averaging RGB frames.
 
-Controlled 512×256 inputs combine smooth ramps, shared fine noise, and either
-three-level shading steps or 16-pixel block offsets. A faint-edge control tests
-preservation of real structure. These are synthetic errors rather than codec encodes.
+The controlled 512×256 inputs combine smooth ramps and shared fine noise with
+either three-level shading steps or 16-pixel block offsets. A faint-edge control
+tests whether real structure is preserved. The errors are synthetic and do not
+come from codec encoding.
 
 | Source measurement | Standard 0.75 | Candidate A | Candidate B |
 | --- | ---: | ---: | ---: |
@@ -39,57 +42,61 @@ preservation of real structure. These are synthetic errors rather than codec enc
 | Block case, fine signal gain | 0.239 | 0.230 | 0.435 |
 | Faint-edge case, local error RMS | 0.731 | 0.798 | 0.635 |
 
-Errors use 0–255 luminance units. Fine signal gain is a projection onto the known
-clean high-pass source, not a perceptual quality score. Candidate A modestly
-reduces broad source error but slightly worsens filtered error in the step case.
-Candidate B retains more variation and restores unwanted contour fragments.
-The scale components overlap, so the method cannot reliably separate texture
-from compression damage.
+Errors are measured in 0–255 luminance units. Fine signal gain is a projection
+onto the known clean high-pass source and does not measure perceptual quality.
+Candidate A modestly reduces broad source error, although it slightly increases
+filtered error in the step case. Candidate B retains more variation but also
+restores unwanted contour fragments. Because the scale components overlap, the
+method cannot reliably separate texture from compression damage.
 
-Two 48-frame excerpts used a portrait clip at 30 fps and Tears of Steel at 24 fps.
-Candidate A changed mean adjacent-frame RGB difference by about −1.0% and −3.2%.
-Candidate B changed it by +2.2% and +2.3%. These measurements include motion and
-do not establish perceptual flicker. The mask reset 23 times in the portrait and
-zero times in the other excerpt. Fattal 2 and long sequences were not visually
-evaluated in this investigation.
+Motion checks used two 48-frame excerpts: a portrait clip at 30 fps and Tears of
+Steel at 24 fps. Candidate A changed the mean RGB difference between adjacent
+frames by about −1.0% and −3.2%, respectively. Candidate B changed it by +2.2% and
++2.3%. These measurements include motion, so they cannot establish perceptual
+flicker. The mask reset 23 times in the portrait and never in the other excerpt.
+This investigation did not visually evaluate Fattal 2 or long sequences.
 
-A warm, alternating 12-trial benchmark on one 1536×864 portrait measured median
-cleanup times of 59 ms for standard 0.75, 282 ms for A, and 277 ms for B.
-These are local cleanup-only timings. The multiscale presets expose Candidate A.
+An alternating 12-trial benchmark, run after warm-up on one 1536×864 portrait,
+measured median cleanup times of 59 ms for standard cleanup at 0.75, 282 ms for A,
+and 277 ms for B. These local timings cover cleanup alone. The multiscale presets
+use Candidate A.
 
 ## Pre-filter noise
 
-Noise enters floating RGB and luminance immediately before the core logarithm,
-after optional cleanup. The original source supplies the smooth-region mask and
-continues to control Fade and shadow protection.
+Noise is added to floating-point RGB and luminance immediately before the core
+logarithm, after optional cleanup. The original source supplies the smooth-region
+mask and continues to determine Fade and shadow protection.
 
 - `highpass` subtracts a sigma-0.8 Gaussian from white noise.
 - `fbm` combines normalized Gaussian octaves with sigmas 4, 2, 1, and 0.5 and
   weights 1, 0.5, 0.25, and 0.125.
-- RMS uses input 0–255 units before masking and clipping. A common perturbation
-  enters all channels, with range protection and a bound of four code values times the mask.
-- The seeded field stays fixed in working-frame coordinates. It is not motion
-  compensated, and changing masks can still produce temporal variation.
+- RMS is measured in input 0–255 units before masking and clipping. The same
+  perturbation is added to all channels, with range protection and a bound of
+  four code values times the mask.
+- The seeded field stays fixed in working-frame coordinates without motion
+  compensation. Changes in the mask can still produce temporal variation.
 
 On the portrait frame, high-pass noise at 0.75 RMS made some contours less distinct
-but added conspicuous grain. Cleanup 0.75 with noise 0.35 was more restrained.
-fBm-like noise produced amplified cloudy patterns. Fattal 2 changed less visibly.
+but added conspicuous grain. Combining cleanup at 0.75 with noise at 0.35 produced
+a more restrained result. The filter amplified fBm-like noise into cloudy
+patterns. Changes were less visible with Fattal 2.
 
-In the synthetic block case, broad source RMS error was 0.623 with noise off and
-0.623 with high-pass noise 0.75. fBm-like noise raised it to 0.839. All tested
-noisy variants increased absolute filtered error against the clean reference,
-which also penalizes intentionally added grain. Blocks remained visible.
+In the synthetic block case, broad source RMS error remained at 0.623 with
+high-pass noise at 0.75, matching the result without noise. fBm-like noise raised
+it to 0.839. All tested noise variants increased absolute filtered error against
+the clean reference, although this measure also penalizes intentionally added
+grain. Blocks remained visible.
 
-One 48-frame portrait trial changed mean adjacent-frame RGB difference from
-25.509 to 24.877 with cleanup plus noise, with 23 mask resets in both cases.
-Median processing time, excluding each first frame, rose from 0.346 to 0.454
-seconds. This short multi-case trial demonstrates neither reconstruction of
-damaged shading nor reliable temporal improvement.
+In one 48-frame portrait trial, adding cleanup and noise changed the mean RGB
+difference between adjacent frames from 25.509 to 24.877, with 23 mask resets in
+both cases. Median processing time rose from 0.346 to 0.454 seconds, excluding
+the first frame of each case. This short comparison does not establish
+reconstruction of damaged shading or reliable temporal improvement.
 
 ## Reproduction
 
-Run from the installed checkout with a new output directory each time.
-Synthetic comparisons need no external media:
+Run these commands from the installed checkout, using a new output directory
+each time. Synthetic comparisons require no external media:
 
 ```bash
 python experiments/investigate_cleanup.py synthetic \
@@ -101,8 +108,9 @@ python experiments/investigate_prenoise.py synthetic \
   --output outputs/prenoise-synthetic-new
 ```
 
-For stills, use decoded sRGB RGB8 input and the `still` subcommand. Cleanup also
-provides a `benchmark` subcommand. To compare motion with your own clip:
+For still images, use decoded sRGB RGB8 input with the `still` subcommand.
+The cleanup script also provides a `benchmark` subcommand. To compare treatments
+on your own video clip, run:
 
 ```bash
 python experiments/investigate_cleanup.py video \
@@ -118,14 +126,14 @@ python experiments/investigate_prenoise.py video \
 ```
 
 `--noise-cleanup`, `--noise-unmasked`, and `--noise-seed` affect the `configured`
-noise case. Named cases retain their encoded settings. Reports record settings,
-input/source hashes, timings, and sampled lossless frames. Review PNGs before
-video encoding for exact frame comparisons.
+noise case. Named cases retain their predefined settings. Reports include
+settings, input/source hashes, timings, and sampled lossless frames. For exact
+frame comparisons, review the PNGs before video encoding.
 
-Excerpts start with fresh decoder and mask state, use working resolution without
-final enlargement, and omit the production adapter's full-stream preflight.
-Video mode requires FFmpeg and ffprobe. Experiment scripts are available in the
-Git checkout and excluded from release distributions.
+Each excerpt starts with fresh decoder and mask state and runs at working
+resolution, without final enlargement or the production adapter's full-stream
+preflight. Video mode requires FFmpeg and ffprobe. The experiment scripts are
+available in the Git checkout but are excluded from release distributions.
 
 ## Background
 
@@ -133,5 +141,5 @@ Git checkout and excluded from release distributions.
 - [Edge-Preserving Decomposition for Multi-Scale Tone and Detail Manipulation](https://www.microsoft.com/en-us/research/video/edge-preserving-decomposition-for-multi-scale-tone-and-detail-manipulation/).
 - [Physically Based Rendering: Noise](https://www.pbr-book.org/3ed-2018/Texture/Noise).
 
-These references describe the underlying filtering and noise constructions.
-They do not validate these particular artifact treatments.
+These references describe the filtering and noise constructions used here.
+They do not validate the particular artifact treatments tested in these studies.

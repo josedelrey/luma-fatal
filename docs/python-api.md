@@ -2,8 +2,8 @@
 
 [Overview](../README.md) · [Configuration](configuration.md) · [Video](video.md)
 
-Run examples from the repository root after installation. Configuration paths
-are explicit caller inputs.
+Run these examples from the repository root after installation. The caller must
+supply configuration paths explicitly.
 
 ## Images and arrays
 
@@ -16,16 +16,16 @@ with Image.open("assets/lantern-garden-original.png") as image:
     result = apply_filter(image, config=config)
 ```
 
-`apply_filter` returns a Pillow image for Pillow input or a NumPy array for array
-input. Arrays must be `uint8` with shape `(height, width, 3)` and already have the
-intended RGB color interpretation. Arrays carry no ICC or EXIF metadata.
-The `fattal1` and `fattal2` convenience functions select the variant directly.
-A configuration with `filter: both` requires an explicit `variant=1` or `variant=2`
-when calling `apply_filter`.
+`apply_filter` returns the same kind of object it receives: a Pillow image or a
+NumPy array. Arrays must have dtype `uint8` and shape `(height, width, 3)`, with
+RGB values already in the intended color space, since they carry no ICC or EXIF
+metadata. Use the `fattal1` and `fattal2` convenience functions to select a variant
+directly. When the configuration specifies `filter: both`, `apply_filter` requires
+an explicit `variant=1` or `variant=2`.
 
-In-memory results do not use configured file encoding or create run records.
-Opaque SDR RGB is the validated scope. Straight RGBA is an explicit experimental
-extension, described in the [scope notes](method.md#scope).
+In-memory processing does not apply file encoding settings or create run records.
+Validation covers opaque SDR RGB. Straight RGBA is available as an explicit
+experimental extension, described in the [scope notes](method.md#scope).
 
 ## Image files
 
@@ -41,12 +41,12 @@ record = process_image(
 )
 ```
 
-`config_path` loads settings when `config` is omitted. When both are supplied,
-`config` controls processing and `config_path` records the underlying file.
-The output extension must match the configured encoding. A file adapter processes
-one filter per call.
-Existing output files or metadata sidecars are refused. Failed runs remove
-artifacts created during publication.
+When `config` is omitted, settings are loaded from `config_path`. If both are
+supplied, `config` controls processing and `config_path` identifies the underlying
+file in the run record. Each call processes one filter, and the output extension
+must match the configured encoding. Existing output files and metadata sidecars
+are never overwritten. If publication fails with a handled error, artifacts
+created by the run are removed.
 
 The record includes resolved settings, dimensions, color conversion details,
 dependency versions, and input/output hashes.
@@ -63,10 +63,11 @@ record = process_video(
 )
 ```
 
-Video settings come from `config.video`. Passing `video_config=VideoConfig(...)`
-explicitly overrides them. See the [video guide](video.md) for accepted inputs.
+Video settings come from `config.video`, unless overridden by an explicit
+`video_config=VideoConfig(...)` argument. See the [video guide](video.md) for
+accepted inputs.
 
-For your own decoder and encoder, use `process_frames`:
+To use your own decoder and encoder, pass decoded frames to `process_frames`:
 
 ```python
 from luma_fatal import process_frames
@@ -75,7 +76,7 @@ for filtered in process_frames(decoded_rgb_frames, config=config):
     write_frame(filtered)
 ```
 
-Here `decoded_rgb_frames` and `write_frame` belong to the caller. Frames must be
-RGB8 arrays. The iterator processes them lazily in input order and holds no
-temporal state. Container timing, color interpretation, audio, and encoding remain
-with the caller. Use one filter per stream.
+In this example, the caller supplies `decoded_rgb_frames` and `write_frame`.
+Frames must be RGB8 arrays. The iterator processes them lazily in input order,
+without temporal state. The caller is responsible for container timing, color
+interpretation, audio, and encoding. Use one filter per stream.
