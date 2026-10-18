@@ -33,6 +33,15 @@ def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _same_file(left: Path, right: Path) -> bool:
+    if left.resolve() == right.resolve():
+        return True
+    try:
+        return left.samefile(right)
+    except FileNotFoundError:
+        return False
+
+
 def process_image(
     input_path: str | Path,
     output_path: str | Path,
@@ -67,8 +76,13 @@ def process_image(
         raise ValueError("process_image requires one filter per output")
     variant = int(config.filter[-1])
     params = config.parameters
-    if input_path.resolve() == output_path.resolve():
+    sidecar_path = output_path.with_suffix(".meta.json")
+    if _same_file(input_path, output_path):
         raise ValueError("Input and output paths must differ to preserve the original")
+    if _same_file(input_path, sidecar_path):
+        raise ValueError("Input and metadata sidecar paths must differ to preserve the original")
+    if _same_file(output_path, sidecar_path):
+        raise ValueError("Output and metadata sidecar paths must differ")
     suffixes = (".jpg", ".jpeg") if config.output.format == "jpeg" else (".png",)
     if output_path.suffix.lower() not in suffixes:
         raise ValueError(
@@ -150,5 +164,5 @@ def process_image(
     )
     if config_source is not None:
         record["config_source"] = config_source
-    _write_json(output_path.with_suffix(".meta.json"), record)
+    _write_json(sidecar_path, record)
     return record
