@@ -1,4 +1,4 @@
-"""Deterministic synthetic images for identifying image-processing behavior."""
+"""Deterministic synthetic images for image-processing tests."""
 
 from __future__ import annotations
 
