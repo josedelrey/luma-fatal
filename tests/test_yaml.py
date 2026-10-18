@@ -1,6 +1,7 @@
 """Configuration safety and experiment reproducibility through the public API."""
 
 from dataclasses import replace
+import hashlib
 import json
 
 import numpy as np
@@ -143,6 +144,56 @@ def test_cli_exports_reusable_yaml_and_refuses_to_overwrite_it(tmp_path, capsys)
     with pytest.raises(SystemExit):
         main(["config", "--output", str(path)])
     assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("mode", ["file", "resolved", "cli"])
+def test_image_records_all_inherited_config_fingerprints(tmp_path, capsys, mode):
+    source = tmp_path / "source.png"
+    Image.new("RGB", (17, 19), (80, 90, 100)).save(source)
+    base = tmp_path / "base.yaml"
+    base.write_text("parameters:\n  fade: 100\noutput:\n  format: png\n")
+    presets = tmp_path / "presets"
+    presets.mkdir()
+    parent = presets / "parent.yaml"
+    child = tmp_path / "child.yaml"
+    child.write_text("extends: presets/parent.yaml\nfilter: fattal2\n")
+    records = []
+    for index, beta in enumerate((60, 70)):
+        parent.write_text(f"extends: ../base.yaml\nparameters:\n  beta: {beta}\n")
+        destination = tmp_path / f"result-{index}.png"
+        if mode == "cli":
+            main(["apply", str(source), str(destination), "--config", str(child),
+                  "--saturation", "75", "--json"])
+            record = json.loads(capsys.readouterr().out)[0]
+        else:
+            options = {}
+            if mode == "resolved":
+                config = Config.load(child)
+                options["config"] = replace(
+                    config, parameters=replace(config.parameters, saturation=75)
+                )
+            record = process_image(source, destination, config_path=child, **options)
+        expected = {
+            "path": str(child),
+            "sha256": hashlib.sha256(child.read_bytes()).hexdigest(),
+            "inherits": [
+                {"path": str(path.resolve()),
+                 "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+                for path in (parent, base)
+            ],
+        }
+        assert record["config_source"] == expected
+        saved = json.loads(destination.with_suffix(".meta.json").read_text())
+        assert saved["config_source"] == expected
+        assert record["configuration"]["parameters"]["beta"] == beta
+        assert record["configuration"]["parameters"]["saturation"] == (
+            100 if mode == "file" else 75
+        )
+        records.append(record)
+    before, after = [record["config_source"] for record in records]
+    assert before["sha256"] == after["sha256"]
+    assert before["inherits"][0]["sha256"] != after["inherits"][0]["sha256"]
+    assert before["inherits"][1] == after["inherits"][1]
 
 
 @pytest.mark.parametrize("section,values", [

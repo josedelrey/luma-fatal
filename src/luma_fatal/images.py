@@ -53,6 +53,12 @@ def process_image(
         if config_path is not None
         else None
     )
+    if config_source is not None:
+        inherited = Config.source_paths(config_path)[1:]
+        if inherited:
+            config_source["inherits"] = [
+                dict(path=str(path), sha256=_digest(path)) for path in inherited
+            ]
     if config is None and config_path is not None:
         config = Config.load(config_path)
     else:
