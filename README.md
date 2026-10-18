@@ -4,10 +4,11 @@
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 [![License](https://img.shields.io/badge/License-MIT%20%2B%20BSD--3--Clause-22A559)](LICENSE)
 
-Experiments in gradient-domain image and video stylization. Two Fattal-inspired
-filters reshape local contrast and color, with configurable numerical controls,
-a Python API, and a command-line interface. Processing runs on the CPU and saves
-resolved settings and input/output fingerprints alongside each file output.
+Luma Fatal explores how gradient-domain filters can change the look of images
+and videos. It includes two Fattal-inspired filters for adjusting local contrast
+and color, which you can tune through a Python API or the command line. Everything
+runs on the CPU, and each output comes with a record of the settings used and
+fingerprints of the input and output files.
 
 | <img src="assets/lantern-garden-original.png" alt="Final Fantasy XIV input" width="280" height="350" align="middle"> | <img src="assets/lantern-garden-fattal-1.png" alt="Fattal 1 result" width="280" height="350" align="middle"> | <img src="assets/lantern-garden-fattal-2.png" alt="Fattal 2 result" width="280" height="350" align="middle"> |
 | :---: | :---: | :---: |
@@ -17,10 +18,11 @@ Fattal 1 and Fattal 2 applied.
 
 ## Method
 
-Both filters attenuate log-luminance gradients across an image pyramid,
-reconstruct brightness with a Poisson solver, and recombine it with color.
-Fattal 1 accumulates attenuation across scales. Fattal 2 replaces it at each
-finer scale. The names refer to this project's experimental variants, based on
+Both filters work with a pyramid of progressively smaller images, reducing
+log-luminance gradients at different scales. They then use a Poisson solver to
+rebuild brightness and combine it with color. The main difference is how they
+carry those adjustments between scales: Fattal 1 builds on the attenuation from
+previous scales, while Fattal 2 replaces it at each finer scale. Both are based on
 [Fattal, Lischinski, and Werman (2002)](https://doi.org/10.1145/566570.566573).
 See the [method notes](docs/method.md) for processing order and numerical choices.
 
@@ -33,6 +35,7 @@ CI covers Linux and Windows with Python 3.11. Run commands from the repository r
 git clone https://github.com/josedelrey/luma-fatal.git
 cd luma-fatal
 uv sync --locked --python 3.11
+source .venv/bin/activate
 ```
 
 Numba compiles numerical kernels on first use, so the first run takes longer.
@@ -42,7 +45,7 @@ Numba compiles numerical kernels on first use, so the first run takes longer.
 Apply both filters to the bundled image:
 
 ```bash
-uv run --locked luma-fatal apply assets/lantern-garden-original.png outputs/comparison \
+luma-fatal apply assets/lantern-garden-original.png outputs/comparison \
   --config configs/fattal-1.yaml --filter both --output-format png
 ```
 
@@ -51,21 +54,22 @@ This writes `fattal1.png`, `fattal2.png`, and their `.meta.json` run records to
 For one result, pass an output filename and select `--filter fattal1` or `fattal2`.
 
 The [configuration guide](docs/configuration.md) covers presets, tone controls,
-resolution, and export. Use `uv run --locked luma-fatal apply --help` for CLI options.
+resolution, and export. Use `luma-fatal apply --help` for CLI options.
 
 ## Process a video
 
 Install FFmpeg and ffprobe with `zscale` and `libx264` support, then run:
 
 ```bash
-uv run --locked luma-fatal video local_inputs/input.mp4 outputs/stylized.mp4 \
+luma-fatal video local_inputs/input.mp4 outputs/stylized.mp4 \
   --config configs/fattal-1.yaml --progress
 ```
 
-Video input must be progressive, constant-frame-rate, 8-bit YUV with explicit
-BT.709 color tags. Output is silent H.264 MP4. Filtering is independent per frame,
-so flicker is possible. The [video guide](docs/video.md) covers input requirements,
-compression cleanup, noise experiments, and encoding.
+Use progressive, 8-bit YUV video with a constant frame rate and explicit BT.709
+color tags. The result is an H.264 MP4 without audio. Each frame is filtered
+separately, which can cause flicker. See the [video guide](docs/video.md) for help
+preparing your input, cleaning up compression artifacts, experimenting with
+noise, and choosing encoding settings.
 
 ## Documentation
 
@@ -78,13 +82,12 @@ compression cleanup, noise experiments, and encoding.
 ## Tests
 
 ```bash
-uv run --locked python -m pytest -q
-uv run --locked python scripts/check_presets.py
+python -m pytest -q
+python scripts/check_presets.py
 ```
 
-Tests use bundled synthetic fixtures and generated clips. Video integration tests
-require FFmpeg and ffprobe. Frozen references cover the tested cases, with no
-guarantee of identical results across all platforms or dependency versions.
+The tests run on synthetic images included in the repository and clips generated
+during testing. You'll need FFmpeg and ffprobe to run the video integration tests.
 
 ## References and license
 
