@@ -2,27 +2,28 @@
 
 [Overview](../README.md) · [Video settings](video.md) · [Method](method.md)
 
-After [installation](../README.md#install), run commands from the repository root
-and activate the virtual environment once per shell session:
+After [installation](../README.md#install), run the following commands from the
+repository root. Activate the virtual environment once per shell session:
 
 ```bash
 source .venv/bin/activate
 ```
 
-Load YAML, TOML, or JSON with `--config`. Explicit CLI options override the file.
-Unknown settings are rejected. Export a complete configuration with defaults:
+Use `--config` to load a YAML, TOML, or JSON file. Explicit CLI options take
+precedence over file settings, and unknown settings are rejected. To export a
+complete configuration, including defaults, run:
 
 ```bash
 luma-fatal config --output outputs/settings.yaml
 ```
 
-Without a preset, the general defaults use Fattal 1 and `fade: 50`. Reference
-presets use `fade: 0` for the full effect.
+The general defaults use Fattal 1 with `fade: 50`. Reference presets set `fade: 0`
+to apply the full effect.
 
 ## Presets
 
-All presets are in [configs/](../configs/). Each `fattal-1` family has a matching
-`fattal-2` version.
+The [configs/](../configs/) directory contains all presets, with a matching
+`fattal-2` version for each `fattal-1` family.
 
 | Preset | Purpose |
 | --- | --- |
@@ -34,9 +35,10 @@ All presets are in [configs/](../configs/). Each `fattal-1` family has a matchin
 | [fattal-1-compressed-noise.yaml](../configs/fattal-1-compressed-noise.yaml) | Compressed preset with masked high-pass noise at 0.35 RMS |
 | [fattal-1-compressed-fbm.yaml](../configs/fattal-1-compressed-fbm.yaml) | Masked fBm-like noise at 0.75 RMS, cleanup disabled |
 
-Use `extends` to override a parent configuration. Parent paths are relative to
-the child file, and named sections merge by setting. A child can also add sections
-that its parent omits. Save this beside the presets:
+Use `extends` to inherit from a parent configuration and override selected settings.
+Parent paths are relative to the child file. Named sections merge by setting,
+and the child can add sections absent from its parent. For example, save this
+file beside the presets:
 
 ```yaml
 extends: fattal-1.yaml
@@ -48,12 +50,13 @@ output:
   format: png
 ```
 
-The run record includes the resolved settings and inherited file fingerprints.
+The run record includes the resolved settings and fingerprints of inherited files.
 
 ## Effect controls
 
-The keys below belong to `parameters`. CLI flags replace underscores with hyphens,
-such as `--tone-strength 60`. Values use a 0–100 scale except `output_gamma`.
+The settings below belong to `parameters` and use a 0–100 scale, except for
+`output_gamma`. Their CLI flags use hyphens in place of underscores, as in
+`--tone-strength 60`.
 
 | Setting | Reference value | Effect |
 | --- | ---: | --- |
@@ -69,12 +72,13 @@ such as `--tone-strength 60`. Values use a 0–100 scale except `output_gamma`.
 | `black_level` | 0 | Filtered output black endpoint, as a percentage of white |
 | `white_level` | 100 | Filtered output white endpoint, strictly above black |
 
-Extremely small alpha values can also fail during filtering if the image's
-gradients would cause division by zero or overflow. Increase alpha in that case.
+Even if an alpha value passes validation, an extremely small value can cause
+division by zero or overflow for some image gradients. Increase alpha if filtering
+reports either condition.
 
-Tone strength 0 retains source brightness while other color and source treatments
-still apply. Fade blends the completed RGB result with the original instead.
-Input preparation still applies at fade 100.
+At tone strength 0, the filter retains source brightness while still applying
+other color and source treatments. Fade blends the completed RGB result with the
+original. Input preparation applies even at fade 100.
 
 For a softer result:
 
@@ -84,24 +88,26 @@ luma-fatal apply assets/lantern-garden-original.png outputs/softer.png \
   --tone-strength 60 --highlight-compression 60 --black-level 5 --white-level 95
 ```
 
-Highlights already clipped in the input cannot be recovered. Raised black levels
-can reduce saturation, and Fade can move pixels outside the selected output range.
+Clipped input highlights cannot be recovered. Raising the black level can reduce
+saturation, and Fade can move pixels outside the selected output range.
 See [processing order](method.md#processing-order) for interactions between controls.
 
 ## Resolution and export
 
-`processing.max_input_pixels` caps the prepared input area and can reduce output
-size. `processing.max_edge` caps the effect's working edge. The filtered image is
-enlarged to the prepared input dimensions afterward. Changing either limit can
-change the appearance. CLI overrides are `--max-input-pixels` and `--max-edge`.
+`processing.max_input_pixels` limits the prepared input area, so it can also reduce
+the output size. `processing.max_edge` limits the longest edge at which the effect
+runs. After filtering, the image is enlarged to the prepared input dimensions.
+Either limit can affect the appearance. Use `--max-input-pixels` and `--max-edge`
+to override them from the CLI.
 
 Reference presets apply EXIF orientation, convert supported ICC profiles to sRGB,
 and export JPEG at quality 100 with 4:2:0 subsampling and no embedded profile.
-Use `--output-format png` with a `.png` destination for lossless export.
-Image output directories are created automatically. Input, output, and metadata
-sidecar paths must refer to distinct files, including hard links and symbolic links.
-Existing output files or sidecars are refused. The image and metadata are staged
-before publication, and handled publication failures remove files created by the run.
+For lossless export, use `--output-format png` with a `.png` destination.
+Output directories are created automatically, but existing output files and
+metadata sidecars are never overwritten. Input, output, and sidecar paths must
+refer to distinct files, even when accessed through hard links or symbolic links.
+The image and metadata are staged before publication. If publication fails with
+a handled error, files created by the run are removed.
 
 ## Numerical controls
 
@@ -122,12 +128,12 @@ before publication, and handled publication failures remove files created by the
 | `numerics.luminance_mode` | `rounded` | Select rounded or `fractional` luminance before the logarithm |
 | `processing.working_resampler` | `nearest` | Select `nearest`, `bilinear`, or `bicubic` reduction to working resolution |
 
-The solver also converts `1 - relaxation` to float32. This weight must stay
-strictly between -1 and 1, so values too close to either endpoint are rejected.
+The solver also converts `1 - relaxation` to float32 and requires this weight to
+remain strictly between -1 and 1. Values too close to either endpoint are rejected.
 
 All numerical settings have matching CLI flags, such as `--iterations 40` and
-`--normalization-low 0.01`. CLI values override YAML settings. Neutral values
-retain the reference behavior. The [method notes](method.md) describe their
-numerical implications.
-Solver settings and validation rules are defined in
-[configuration.py](../src/luma_fatal/configuration.py) and included in exported configs.
+`--normalization-low 0.01`, which take precedence over YAML settings. Neutral
+values preserve reference behavior. See the [method notes](method.md) for the
+numerical implications and
+[configuration.py](../src/luma_fatal/configuration.py) for solver settings and
+validation rules. Exported configurations include these settings.

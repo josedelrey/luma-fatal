@@ -4,7 +4,7 @@
 
 ## Checks
 
-From the repository root:
+Run the development checks from the repository root:
 
 ```bash
 uv sync --locked --python 3.11
@@ -14,29 +14,31 @@ python scripts/check_presets.py
 uv build
 ```
 
-[CI](../.github/workflows/ci.yml) runs the suite, preset checks, and distribution
-builds on Ubuntu and Windows with Python 3.11. It installs FFmpeg and ffprobe and
-requires video integration tests. Locally, those tests skip if the tools are absent.
+[CI](../.github/workflows/ci.yml) runs the test suite, preset checks, and distribution
+builds on Ubuntu and Windows with Python 3.11. FFmpeg and ffprobe are installed
+there, and video integration tests must pass. In local runs, those tests are
+skipped if the tools are unavailable.
 
-Regression inputs are bundled in [tests/fixtures/](../tests/fixtures/) or generated
-deterministically. Coverage includes scalar float32 bit patterns, filter outputs,
-interpolation, geometry, decoding, and color conversion. Video tests generate
-short clips and synthetic audio, checking frame counts, timing, geometry, color
-tags, and agreement with the image API before lossy encoding.
+Regression tests use bundled [fixtures](../tests/fixtures/) or deterministically
+generated inputs. They cover scalar float32 bit patterns, filter outputs,
+interpolation, geometry, decoding, and color conversion. Video tests use generated
+clips and synthetic audio to check frame counts, timing, geometry, and color tags,
+as well as agreement with the image API before lossy encoding.
 
 ## Frozen presets
 
 The preset checker compares dimensions, RGB pixels, encoded JPEG bytes, decoded
 pixels, and codec settings against [presets.json](../tests/fixtures/presets.json).
-It fails on missing inputs or mismatches and never regenerates expectations.
-Retain outputs and a JSON report with:
+Missing inputs or mismatches cause the check to fail. The checker never
+regenerates expected results. To retain outputs and a JSON report, run:
 
 ```bash
 python scripts/check_presets.py --output outputs/preset-check
 ```
 
-The output directory must be new. Frozen results establish behavior for the
-covered cases. They do not guarantee equality for every environment or source.
+Use a new output directory for each run. Frozen results establish behavior for
+the cases they cover, without guaranteeing equality across all environments or
+source images.
 
 ## README comparison
 
@@ -47,14 +49,14 @@ luma-fatal apply assets/lantern-garden-original.png outputs/readme-comparison-ne
   --config configs/fattal-1.yaml --filter both --shadow-softness 6 --output-format png
 ```
 
-This uses both reference variants with shadow softness 6 and PNG export. Outputs
-are `fattal1.png`, `fattal2.png`, and their `.meta.json` run records. The source
-and published results are 1122×1402 PNGs. The input is a reconstruction of a
+This command applies both reference variants with shadow softness 6 and saves
+`fattal1.png`, `fattal2.png`, and their `.meta.json` run records. The source and
+published results are 1122×1402 PNGs. The input is a reconstruction of a
 centered crop from [Acerola’s FFXIV showcase at 24:03](https://www.youtube.com/watch?v=jJnwzkBre8Y&t=1443s),
-with invented detail. Filtering is reproducible from the bundled input.
-Source restoration is outside this reproduction workflow.
+with invented detail. The command reproduces the filtering from the bundled
+input. It does not reproduce the source restoration step.
 
-`assets/` contains only the three README images. Experimental inputs belong in
-ignored `local_inputs/`, and generated artifacts belong in ignored `outputs/`.
-Source distributions include the docs, presets, tests, and comparison assets.
-Wheels include the runtime and complete license notices.
+The three README images are kept in `assets/`. Use the ignored `local_inputs/`
+directory for experimental inputs and `outputs/` for generated artifacts.
+Source distributions include the documentation, presets, tests, and comparison
+assets, while wheels include the runtime and complete license notices.
