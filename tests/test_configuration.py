@@ -67,6 +67,51 @@ def test_invalid_config_is_rejected(values):
         Config.from_dict(values)
 
 
+@pytest.mark.parametrize("text,key", [
+    ('{"filter": "fattal1", "filter": "fattal2"}', "filter"),
+    ('{"parameters": {"fade": 0}, "parameters": {"fade": 100}}', "parameters"),
+    ('{"parameters": {"fade": 0, "fade": 100}}', "fade"),
+    ('{"parameters": {"fade": 0, "fade": 0}}', "fade"),
+    (r'{"parameters": {"fade": 0, "\u0066ade": 100}}', "fade"),
+])
+@pytest.mark.parametrize("inherited", [False, True])
+def test_duplicate_json_keys_fail_before_processing(
+    tmp_path, capsys, text, key, inherited
+):
+    path = tmp_path / "settings.json"
+    path.write_text(text)
+    if inherited:
+        child = tmp_path / "child.yaml"
+        child.write_text("extends: settings.json\nparameters:\n  fade: 50\n")
+        path = child
+    message = f"Duplicate configuration key: {key}"
+    with pytest.raises(ValueError, match=message):
+        Config.load(path)
+    with pytest.raises(ValueError, match=message):
+        Config.source_paths(path)
+    destination = tmp_path / "output.jpg"
+    with pytest.raises(SystemExit) as error:
+        main(["apply", str(tmp_path / "missing.png"), str(destination),
+              "--config", str(path)])
+    assert error.value.code == 2
+    assert message in capsys.readouterr().err
+    assert not destination.exists()
+    assert not destination.with_suffix(".meta.json").exists()
+
+
+def test_json_inheritance_allows_overrides_between_files(tmp_path):
+    parent = tmp_path / "parent.json"
+    child = tmp_path / "child.json"
+    parent.write_text('{"parameters": {"fade": 0, "beta": 60}}')
+    child.write_text(
+        '{"extends": "parent.json", "parameters": {"fade": 100}, '
+        '"output": {"format": "png"}}'
+    )
+    assert Config.load(child) == Config(
+        parameters=FilterParams(fade=100, beta=60), output=OutputConfig(format="png")
+    )
+
+
 def test_config_round_trip_and_checked_in_defaults(tmp_path):
     config = Config(
         output=OutputConfig(jpeg_background=(10, 20, 30)),
