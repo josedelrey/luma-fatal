@@ -44,10 +44,10 @@ Regenerate both filtered results from the bundled input:
 
 ```bash
 luma-fatal apply assets/lantern-garden-original.png outputs/readme-comparison-new \
-  --config configs/fattal-1.yaml --filter both --output-format png
+  --config configs/fattal-1.yaml --filter both --shadow-softness 6 --output-format png
 ```
 
-This uses both reference variants with PNG export as the only override. Outputs
+This uses both reference variants with shadow softness 6 and PNG export. Outputs
 are `fattal1.png`, `fattal2.png`, and their `.meta.json` run records. The source
 and published results are 1122×1402 PNGs. The input is a reconstruction of a
 centered crop from [Acerola’s FFXIV showcase at 24:03](https://www.youtube.com/watch?v=jJnwzkBre8Y&t=1443s),
