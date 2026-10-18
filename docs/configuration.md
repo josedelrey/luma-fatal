@@ -2,11 +2,18 @@
 
 [Overview](../README.md) · [Video settings](video.md) · [Method](method.md)
 
+After [installation](../README.md#install), run commands from the repository root
+and activate the virtual environment once per shell session:
+
+```bash
+source .venv/bin/activate
+```
+
 Load YAML, TOML, or JSON with `--config`. Explicit CLI options override the file.
 Unknown settings are rejected. Export a complete configuration with defaults:
 
 ```bash
-uv run --locked luma-fatal config --output outputs/settings.yaml
+luma-fatal config --output outputs/settings.yaml
 ```
 
 Without a preset, the general defaults use Fattal 1 and `fade: 50`. Reference
@@ -68,7 +75,7 @@ Input preparation still applies at fade 100.
 For a softer result:
 
 ```bash
-uv run --locked luma-fatal apply assets/lantern-garden-original.png outputs/softer.png \
+luma-fatal apply assets/lantern-garden-original.png outputs/softer.png \
   --config configs/fattal-1.yaml --output-format png \
   --tone-strength 60 --highlight-compression 60 --black-level 5 --white-level 95
 ```

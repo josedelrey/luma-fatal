@@ -2,6 +2,13 @@
 
 [Overview](../README.md) · [Presets](configuration.md#presets) · [Experiments](experiments.md)
 
+After [installation](../README.md#install), run commands from the repository root
+and activate the virtual environment once per shell session:
+
+```bash
+source .venv/bin/activate
+```
+
 ## Requirements and input
 
 Install `ffmpeg` and `ffprobe` on `PATH`. FFmpeg needs `zscale` and `libx264`,
@@ -14,7 +21,7 @@ opaque 8-bit planar YUV 4:2:0, 4:2:2, or 4:4:4. Untagged color, HDR, interlacing
 display rotation, and variable frame rate are rejected.
 
 ```bash
-uv run --locked luma-fatal video local_inputs/input.mp4 outputs/stylized.mp4 \
+luma-fatal video local_inputs/input.mp4 outputs/stylized.mp4 \
   --config configs/fattal-1.yaml --progress
 ```
 
@@ -56,7 +63,7 @@ The compressed presets enable gentle debanding, smooth shadows, and standard
 smooth-area cleanup at strength 0.75:
 
 ```bash
-uv run --locked luma-fatal video local_inputs/input.mp4 outputs/cleaned.mp4 \
+luma-fatal video local_inputs/input.mp4 outputs/cleaned.mp4 \
   --config configs/fattal-1-compressed.yaml --progress
 ```
 

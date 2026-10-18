@@ -8,8 +8,9 @@ From the repository root:
 
 ```bash
 uv sync --locked --python 3.11
-uv run --locked python -m pytest -q
-uv run --locked python scripts/check_presets.py
+source .venv/bin/activate
+python -m pytest -q
+python scripts/check_presets.py
 uv build
 ```
 
@@ -31,7 +32,7 @@ It fails on missing inputs or mismatches and never regenerates expectations.
 Retain outputs and a JSON report with:
 
 ```bash
-uv run --locked python scripts/check_presets.py --output outputs/preset-check
+python scripts/check_presets.py --output outputs/preset-check
 ```
 
 The output directory must be new. Frozen results establish behavior for the
@@ -42,7 +43,7 @@ covered cases. They do not guarantee equality for every environment or source.
 Regenerate both filtered results from the bundled input:
 
 ```bash
-uv run --locked luma-fatal apply assets/lantern-garden-original.png outputs/readme-comparison-new \
+luma-fatal apply assets/lantern-garden-original.png outputs/readme-comparison-new \
   --config configs/fattal-1.yaml --filter both --output-format png
 ```
 

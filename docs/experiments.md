@@ -2,6 +2,13 @@
 
 [Overview](../README.md) · [Video controls](video.md) · [Experiment scripts](../experiments/)
 
+After [installation](../README.md#install), run commands from the repository root
+and activate the virtual environment once per shell session:
+
+```bash
+source .venv/bin/activate
+```
+
 These studies test whether preprocessing reduces compression artifacts amplified
 by the Fattal filters. They are optional visual treatments. Findings below are
 local observations from 2026-10-16 and 2026-10-17, with limited motion validation.
@@ -85,10 +92,10 @@ Run from the installed checkout with a new output directory each time.
 Synthetic comparisons need no external media:
 
 ```bash
-uv run --locked python experiments/investigate_cleanup.py synthetic \
+python experiments/investigate_cleanup.py synthetic \
   --config configs/fattal-1-compressed.yaml --output outputs/cleanup-synthetic-new
 
-uv run --locked python experiments/investigate_prenoise.py synthetic \
+python experiments/investigate_prenoise.py synthetic \
   --config configs/fattal-1-compressed.yaml \
   --cases off current075 highpass035 highpass075 fbm075 clean075-highpass035 \
   --output outputs/prenoise-synthetic-new
@@ -98,12 +105,12 @@ For stills, use decoded sRGB RGB8 input and the `still` subcommand. Cleanup also
 provides a `benchmark` subcommand. To compare motion with your own clip:
 
 ```bash
-uv run --locked python experiments/investigate_cleanup.py video \
+python experiments/investigate_cleanup.py video \
   --input local_inputs/clip.mp4 --start 0 --frames 48 \
   --config configs/fattal-1-compressed.yaml \
   --cases current075 split075-s12 split050-s12 --output outputs/cleanup-motion-new
 
-uv run --locked python experiments/investigate_prenoise.py video \
+python experiments/investigate_prenoise.py video \
   --input local_inputs/clip.mp4 --start 0 --frames 48 \
   --config configs/fattal-1-compressed.yaml --cases current075 configured \
   --noise-rms 0.35 --noise-kind highpass --noise-cleanup 0.75 \
