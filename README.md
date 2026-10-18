@@ -9,11 +9,8 @@ filters reshape local contrast and color, with configurable numerical controls,
 a Python API, and a command-line interface. Processing runs on the CPU and saves
 resolved settings and input/output fingerprints alongside each file output.
 
-<p>
-  <img src="assets/lantern-garden-original.png" alt="Final Fantasy XIV input" width="32%" align="middle">
-  <img src="assets/lantern-garden-fattal-1.png" alt="Fattal 1 result" width="32%" align="middle">
-  <img src="assets/lantern-garden-fattal-2.png" alt="Fattal 2 result" width="32%" align="middle">
-</p>
+| <img src="assets/lantern-garden-original.png" alt="Final Fantasy XIV input" width="280" height="350" align="middle"> | <img src="assets/lantern-garden-fattal-1.png" alt="Fattal 1 result" width="280" height="350" align="middle"> | <img src="assets/lantern-garden-fattal-2.png" alt="Fattal 2 result" width="280" height="350" align="middle"> |
+| :---: | :---: | :---: |
 
 Left to right: *Final Fantasy XIV* image, then the same image with
 Fattal 1 and Fattal 2 applied.
