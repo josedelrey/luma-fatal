@@ -57,7 +57,7 @@ such as `--tone-strength 60`. Values use a 0–100 scale except `output_gamma`.
 
 | Setting | Reference value | Effect |
 | --- | ---: | --- |
-| `alpha` | 1 | Gradient attenuation, must be greater than 0 |
+| `alpha` | 1 | Gradient attenuation, must remain positive in float32 after division by 100 |
 | `beta` | 80 | Gradient attenuation |
 | `saturation` | 100 | Color recombination strength |
 | `noise` | 0 | Offset in the attenuation calculation, separate from source noise |
