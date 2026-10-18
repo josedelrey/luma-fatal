@@ -161,6 +161,8 @@ class FilterParams:
                 raise ValueError(f"{name} must be finite and between 0 and 100")
         if self.alpha == 0:
             raise ValueError("alpha must be greater than zero")
+        if np.float32(self.alpha) / np.float32(100) == 0:
+            raise ValueError("alpha must remain positive in float32 after division by 100")
         if self.black_level >= self.white_level:
             raise ValueError("black_level must be below white_level")
         _finite("output_gamma", self.output_gamma, 0, math.inf, exclusive_min=True)

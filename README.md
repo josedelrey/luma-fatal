@@ -4,8 +4,8 @@
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 [![License](https://img.shields.io/badge/License-MIT%20%2B%20BSD--3--Clause-22A559)](LICENSE)
 
-Luma Fatal explores how gradient-domain filters can change the look of images
-and videos. It includes two Fattal-inspired filters for adjusting local contrast
+Luma Fatal investigates image and video stylization through gradient-domain
+filtering. It includes two Fattal-inspired filters for adjusting local contrast
 and color, which you can tune through a Python API or the command line. Everything
 runs on the CPU, and each output comes with a record of the settings used and
 fingerprints of the input and output files.

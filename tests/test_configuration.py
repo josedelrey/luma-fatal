@@ -67,6 +67,58 @@ def test_invalid_config_is_rejected(values):
         Config.from_dict(values)
 
 
+@pytest.mark.parametrize("alpha", [1e-50, 1e-44])
+def test_alpha_that_underflows_during_scaling_is_rejected(alpha):
+    with pytest.raises(ValueError, match="alpha must remain positive in float32"):
+        FilterParams(alpha=alpha)
+
+
+@pytest.mark.parametrize("alpha", [1e-20, 0.01, 1, 100])
+def test_representable_positive_alpha_is_accepted(alpha):
+    assert FilterParams(alpha=alpha).alpha == alpha
+
+
+@pytest.mark.parametrize("suffix", ["yaml", "json", "toml"])
+@pytest.mark.parametrize("alpha", ["1e-50", "1e-44"])
+def test_alpha_underflow_in_config_is_rejected_before_processing(
+    tmp_path, capsys, suffix, alpha
+):
+    content = {
+        "yaml": f"parameters:\n  alpha: {alpha}\n",
+        "json": f'{{"parameters": {{"alpha": {alpha}}}}}',
+        "toml": f"[parameters]\nalpha = {alpha}\n",
+    }
+    path = tmp_path / f"settings.{suffix}"
+    path.write_text(content[suffix])
+    with pytest.raises(ValueError, match="alpha must remain positive in float32"):
+        Config.load(path)
+    destination = tmp_path / "output.jpg"
+    with pytest.raises(SystemExit) as error:
+        main(["apply", str(tmp_path / "missing.png"), str(destination),
+              "--config", str(path)])
+    assert error.value.code == 2
+    assert "alpha must remain positive in float32" in capsys.readouterr().err
+    assert not destination.exists()
+    assert not destination.with_suffix(".meta.json").exists()
+
+
+@pytest.mark.parametrize("alpha", ["1e-50", "1e-44"])
+@pytest.mark.parametrize("command", ["apply", "evaluate", "video"])
+def test_alpha_underflow_cli_override_is_rejected_before_processing(
+    tmp_path, capsys, alpha, command
+):
+    destination = tmp_path / "output"
+    arguments = [command, str(tmp_path / "missing")]
+    if command == "evaluate":
+        arguments.append(str(tmp_path / "references"))
+    arguments += [str(destination), "--alpha", alpha]
+    with pytest.raises(SystemExit) as error:
+        main(arguments)
+    assert error.value.code == 2
+    assert "alpha must remain positive in float32" in capsys.readouterr().err
+    assert not destination.exists()
+
+
 @pytest.mark.parametrize("text,key", [
     ('{"filter": "fattal1", "filter": "fattal2"}', "filter"),
     ('{"parameters": {"fade": 0}, "parameters": {"fade": 100}}', "parameters"),
