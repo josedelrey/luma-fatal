@@ -67,9 +67,7 @@ def _cubic_axis(
 def _resize_cubic(source: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
     """Resample scalar fields with half-pixel cubic weights (a = -0.75).
 
-    No antialias prefilter is applied. Fixed numerical references cover
-    bounded contiguous buffers. Other strides and nonfinite inputs are
-    outside the established scope.
+    No antialias prefilter is applied. Tests cover finite, contiguous inputs.
     """
     if source.shape == shape:
         return source.copy()
@@ -531,17 +529,17 @@ def apply_core(
                     luminance,
                     mapped,
                     params.saturation,
-                    numerics.shadow_threshold,
-                    numerics.power_mode,
-                    params.output_gamma,
-                    numerics.shadow_softness,
-                    color_rgb,
-                    shadow_luminance,
-                    params.tone_strength,
-                    params.highlight_compression,
-                    params.black_level,
-                    params.white_level,
-                    params.vibrance,
+                    shadow_threshold=numerics.shadow_threshold,
+                    power_mode=numerics.power_mode,
+                    output_gamma=params.output_gamma,
+                    shadow_softness=numerics.shadow_softness,
+                    color_rgb=color_rgb,
+                    shadow_luminance=shadow_luminance,
+                    tone_strength=params.tone_strength,
+                    highlight_compression=params.highlight_compression,
+                    black_level=params.black_level,
+                    white_level=params.white_level,
+                    vibrance=params.vibrance,
                 )
             elif levels_active:
                 filtered = _quantize_output_levels(

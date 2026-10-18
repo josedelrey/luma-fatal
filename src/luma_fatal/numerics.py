@@ -1,6 +1,6 @@
 """Float32 scalar math, fixed-point luminance and affine power approximations.
 
-Operation ordering is part of the frozen numerical contract.
+Results depend on floating-point operation order.
 """
 
 from __future__ import annotations
@@ -17,8 +17,7 @@ _BIAS = 1072632447
 def scalar_math_f32(source: F32, exponential: bool) -> F32:
     """Evaluate scalar float32 log or exp without fastmath.
 
-    Scalar host libm is covered by fixed serial traces on the locked Linux
-    runtime. Cross-platform bit equality is outside the current contract.
+    Results may vary with the platform's math library.
     """
     result = np.empty_like(source)
     values, output = source.ravel(), result.ravel()
@@ -95,18 +94,3 @@ def luminance_fractional(rgb: NDArray[np.uint8]) -> NDArray[np.float32]:
         + 1868 * channels[..., 2]
     )
     return weighted.astype(np.float32) / np.float32(16384 * 255)
-
-
-def attenuation(gradient: F32, alpha: float, beta: float, noise: float) -> F32:
-    """Compute a gradient attenuation field from its mean magnitude."""
-    row_sums = np.cumsum(gradient, axis=1, dtype=np.float32)[:, -1]
-    average = np.cumsum(row_sums, dtype=np.float32)[-1] / np.float32(gradient.size)
-    denominator = np.float32(np.float32(alpha) * average)
-    result = np.ones_like(gradient)
-    mask = gradient > np.float32(1e-4)
-    if not np.any(mask) or denominator <= 0:
-        return result
-    ratio = (gradient[mask] + np.float32(noise)) / denominator
-    exponent = np.float32(np.float32(beta) - np.float32(1))
-    result[mask] = fast_pow(ratio, exponent)
-    return result
