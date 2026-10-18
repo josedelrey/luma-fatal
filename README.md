@@ -6,9 +6,7 @@
 
 Luma Fatal investigates image and video stylization through gradient-domain
 filtering. It includes two Fattal-inspired filters for adjusting local contrast
-and color, which you can tune through a Python API or the command line. Everything
-runs on the CPU, and each output comes with a record of the settings used and
-fingerprints of the input and output files.
+and color, which you can tune through a Python API or the command line.
 
 | <img src="assets/lantern-garden-original.png" alt="Final Fantasy XIV input" width="280" height="350" align="middle"> | <img src="assets/lantern-garden-fattal-1.png" alt="Fattal 1 result" width="280" height="350" align="middle"> | <img src="assets/lantern-garden-fattal-2.png" alt="Fattal 2 result" width="280" height="350" align="middle"> |
 | :---: | :---: | :---: |
