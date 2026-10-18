@@ -23,8 +23,8 @@ def apply_filter(
     The default route includes an 8 MP input-area budget and
     1536-pixel effect working limit. File sampling requires a lazy Pillow
     image with its compressed stream available. Arrays are decoded pixels.
-    The core profile processes the original size and preserves straight RGBA
-    as an explicit extension. Full alpha compatibility is outside the validated scope.
+    The core profile preserves original dimensions and straight RGBA.
+    Alpha behavior has limited test coverage.
     """
     config = resolve_config(config, profile)
     params = config.parameters if params is None else params
@@ -69,17 +69,8 @@ def apply_filter(
         result = process_pixels(
             array, variant, params, config.processing, config.numerics
         )
-        if pil_input:
-            output = Image.fromarray(result)
-            if config.image.color_space == "srgb":
-                output.info["icc_profile"] = image.info["icc_profile"]
-            if "_input_decode" in image.info:
-                output.info["_input_decode"] = image.info["_input_decode"]
-            if "_color_conversion" in image.info:
-                output.info["_color_conversion"] = image.info["_color_conversion"]
-            return output
-        return result
-    result = apply_core(array, variant, params, config.numerics)
+    else:
+        result = apply_core(array, variant, params, config.numerics)
     if pil_input:
         output = Image.fromarray(result)
         if config.image.color_space == "srgb":

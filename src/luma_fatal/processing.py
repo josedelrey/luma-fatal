@@ -40,11 +40,7 @@ def limit_input_pixels(array: np.ndarray, max_pixels: int | None) -> np.ndarray:
 
 
 def working_size(size: tuple[int, int], max_edge: int | None = 1536) -> tuple[int, int]:
-    """Fit the longest edge using float32 scaling and positive ties-up rounding.
-
-    The float32 geometry and positive ties-up rule are part of the frozen
-    processing contract. Short dimensions are rounded rather than truncated.
-    """
+    """Fit the longest edge using float32 scaling, rounding positive half ties up."""
     width, height = size
     if max_edge is None or max(size) <= max_edge:
         return size
@@ -53,7 +49,6 @@ def working_size(size: tuple[int, int], max_edge: int | None = 1536) -> tuple[in
         np.float32(max_edge) / np.float32(height),
     )
     # Widen before +0.5 so addition does not round a near-tie in float32.
-    # Positive half ties round upward.
     return tuple(
         max(1, int(np.floor(float(np.float32(dimension) * scale) + 0.5)))
         for dimension in (width, height)
@@ -63,9 +58,8 @@ def working_size(size: tuple[int, int], max_edge: int | None = 1536) -> tuple[in
 def nearest_coordinates(source_size: tuple[int, int], size: tuple[int, int]):
     """Select half-pixel source coordinates with a fixed tie bias.
 
-    The coordinate contract uses float32 horizontally and float64 vertically,
-    subtracting 2**-15 before flooring. A fixed coordinate atlas covers the
-    2048-to-1536 mapping. Other geometries have bounded reference coverage.
+    Uses float32 horizontally and float64 vertically, subtracting 2**-15
+    before flooring.
     """
     width, height = size
     x = (np.arange(width, dtype=np.float32) + np.float32(0.5)) * np.float32(
@@ -86,7 +80,7 @@ def resize_linear_floor(rgb: np.ndarray, size: tuple[int, int]) -> np.ndarray:
     """Half-pixel bilinear RGB8 interpolation with final truncation.
 
     Intermediate interpolation uses float64 and the final RGB8 conversion
-    truncates fractional values. Coverage is bounded by fixed scale references.
+    truncates fractional values.
     """
     width, height = size
     if (rgb.shape[1], rgb.shape[0]) == size:
@@ -127,7 +121,7 @@ def resize_working(
 
     Bilinear uses half-pixel coordinates and truncates to RGB8. Bicubic uses
     the scalar-field kernel (a = -0.75), clamps overshoot and truncates to RGB8.
-    Nearest preserves the fixed coordinate contract of the reference presets.
+    Nearest uses half-pixel coordinates with a fixed tie bias.
     """
     if method == "nearest":
         return resize_nearest(rgb, size)
@@ -171,8 +165,7 @@ def resize_bilinear_fixed(rgb: np.ndarray, size: tuple[int, int]) -> np.ndarray:
     """Resample RGB8 with four-bit bilinear weights and integer quantization.
 
     Coordinates use float32 inverse scaling and 32.32 horizontal stepping
-    in blocks of 127 pixels. Fixed numerical references cover the sampling
-    contract, including clamping and final byte conversion.
+    in blocks of 127 pixels, with clamping at image edges.
     """
     width, height = size
     if (rgb.shape[1], rgb.shape[0]) == size:
