@@ -54,6 +54,16 @@ DEVICE_MAX_EDGES = {"low": 1024, "medium": 1536, "high": 2048}
 DEVICE_INPUT_PIXELS = {"low": 4_000_000, "medium": 8_000_000, "high": 12_000_000}
 
 
+def _unique_json_object(pairs):
+    """Reject repeated JSON keys before they can overwrite earlier settings."""
+    values = {}
+    for key, value in pairs:
+        if key in values:
+            raise ValueError(f"Duplicate configuration key: {key}")
+        values[key] = value
+    return values
+
+
 def _choice(name, value, choices):
     if not isinstance(value, str) or value not in choices:
         raise ValueError(f"{name} must be one of {', '.join(choices)}")
@@ -399,7 +409,10 @@ class Config:
             elif path.suffix.lower() == ".toml":
                 data = tomllib.loads(path.read_text(encoding="utf-8"))
             elif path.suffix.lower() == ".json":
-                data = json.loads(path.read_text(encoding="utf-8"))
+                data = json.loads(
+                    path.read_text(encoding="utf-8"),
+                    object_pairs_hook=_unique_json_object,
+                )
             else:
                 raise ValueError(
                     "Configuration files must use .yaml, .yml, .toml or .json"
