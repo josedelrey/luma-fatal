@@ -98,7 +98,8 @@ change the appearance. CLI overrides are `--max-input-pixels` and `--max-edge`.
 Reference presets apply EXIF orientation, convert supported ICC profiles to sRGB,
 and export JPEG at quality 100 with 4:2:0 subsampling and no embedded profile.
 Use `--output-format png` with a `.png` destination for lossless export.
-Image output directories are created automatically. Input and output paths must differ.
+Image output directories are created automatically. Input, output, and metadata
+sidecar paths must refer to distinct files, including hard links and symbolic links.
 
 ## Numerical controls
 
