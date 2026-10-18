@@ -4,11 +4,10 @@
 
 ## Checks
 
-Run the development checks from the repository root:
+Run the development checks:
 
 ```bash
 uv sync --locked --python 3.11
-source .venv/bin/activate
 python -m pytest -q
 python scripts/check_presets.py
 uv build
@@ -51,10 +50,7 @@ luma-fatal apply assets/lantern-garden-original.png outputs/readme-comparison-ne
 
 This command applies both reference variants with shadow softness 6 and saves
 `fattal1.png`, `fattal2.png`, and their `.meta.json` run records. The source and
-published results are 1122×1402 PNGs. The input is a reconstruction of a
-centered crop from [Acerola’s FFXIV showcase at 24:03](https://www.youtube.com/watch?v=jJnwzkBre8Y&t=1443s),
-with invented detail. The command reproduces the filtering from the bundled
-input. It does not reproduce the source restoration step.
+published results are 1122×1402 PNGs.
 
 The three README images are kept in `assets/`. Use the ignored `local_inputs/`
 directory for experimental inputs and `outputs/` for generated artifacts.

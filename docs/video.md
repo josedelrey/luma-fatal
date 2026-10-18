@@ -2,13 +2,6 @@
 
 [Overview](../README.md) · [Presets](configuration.md#presets) · [Experiments](experiments.md)
 
-After [installation](../README.md#install), run the following commands from the
-repository root. Activate the virtual environment once per shell session:
-
-```bash
-source .venv/bin/activate
-```
-
 ## Requirements and input
 
 Install `ffmpeg` and `ffprobe` so they are available on `PATH`. FFmpeg must include

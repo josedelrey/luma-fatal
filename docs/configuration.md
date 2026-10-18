@@ -2,8 +2,8 @@
 
 [Overview](../README.md) · [Video settings](video.md) · [Method](method.md)
 
-After [installation](../README.md#install), run the following commands from the
-repository root. Activate the virtual environment once per shell session:
+After [installation](../README.md#install), run all documentation commands from
+the repository root. Activate the virtual environment once per shell session:
 
 ```bash
 source .venv/bin/activate
