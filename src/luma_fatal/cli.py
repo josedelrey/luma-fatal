@@ -73,7 +73,7 @@ def _settings(args: argparse.Namespace) -> Config:
         output["format"] = args.output_format
     numerics = {
         name: getattr(args, name)
-        for name in ("detail_level", "power_mode", "shadow_softness", "luminance_mode")
+        for name in asdict(config.numerics)
         if getattr(args, name) is not None
     }
     video = {
@@ -347,6 +347,23 @@ def main(argv: list[str] | None = None) -> None:
                     "vibrance": "Boost muted colors more than saturated colors, "
                     "0 to 100, default 0",
                 }.get(name, f"Parameter scale 0..100, default {default:g}"),
+            )
+        for name, value_type, description in (
+            ("iterations", int, "Poisson solver iterations, at least 1"),
+            ("relaxation", float, "Poisson relaxation factor, greater than 0 and below 2"),
+            ("pyramid_min_size", int, "Minimum pyramid dimension, at least 2"),
+            ("normalization_low", float, "Lower normalization quantile, 0 to below 1"),
+            ("normalization_high", float, "Upper normalization quantile, 0 to below 1"),
+            ("normalization_floor", float, "Positive normalization floor, at most 1"),
+            ("gradient_threshold", float, "Positive gradient threshold, at most 1"),
+            ("log_offset", float, "Positive luminance offset before logarithms, at most 1"),
+            ("shadow_threshold", int, "Shadow preservation cutoff, 0 to 255"),
+        ):
+            command.add_argument(
+                "--" + name.replace("_", "-"),
+                type=value_type,
+                default=None,
+                help=description,
             )
         command.add_argument(
             "--detail-level",

@@ -35,7 +35,8 @@ All presets are in [configs/](../configs/). Each `fattal-1` family has a matchin
 | [fattal-1-compressed-fbm.yaml](../configs/fattal-1-compressed-fbm.yaml) | Masked fBm-like noise at 0.75 RMS, cleanup disabled |
 
 Use `extends` to override a parent configuration. Parent paths are relative to
-the child file, and named sections merge by setting. Save this beside the presets:
+the child file, and named sections merge by setting. A child can also add sections
+that its parent omits. Save this beside the presets:
 
 ```yaml
 extends: fattal-1.yaml
@@ -100,13 +101,24 @@ Image output directories are created automatically. Input and output paths must 
 
 | Key | Reference value | Behavior |
 | --- | --- | --- |
+| `numerics.iterations` | `80` | Poisson solver iteration count, at least 1 |
+| `numerics.relaxation` | `1.9` | Poisson relaxation factor, greater than 0 and below 2 |
+| `numerics.pyramid_min_size` | `32` | Minimum pyramid dimension, at least 2 |
+| `numerics.normalization_low` | `0.001` | Lower normalization quantile, below `normalization_high` |
+| `numerics.normalization_high` | `0.995` | Upper normalization quantile, below 1 |
+| `numerics.normalization_floor` | `0.0001` | Positive normalization floor, at most 1 |
+| `numerics.gradient_threshold` | `0.0001` | Positive gradient threshold, at most 1 |
+| `numerics.log_offset` | `0.01` | Positive luminance offset before logarithms, at most 1 |
+| `numerics.shadow_threshold` | `6` | Shadow preservation cutoff, 0–255 |
 | `numerics.detail_level` | `0` | Omit this many finest attenuation scales |
 | `numerics.power_mode` | `approximate` | Select reference approximations or `standard` NumPy powers |
 | `numerics.shadow_softness` | `0` | Smooth the shadow cutoff with a half-width of 1–255 luminance levels |
 | `numerics.luminance_mode` | `rounded` | Select rounded or `fractional` luminance before the logarithm |
 | `processing.working_resampler` | `nearest` | Select `nearest`, `bilinear`, or `bicubic` reduction to working resolution |
 
-These controls have matching CLI flags. Neutral values retain the reference
-behavior. The [method notes](method.md) describe their numerical implications.
+All numerical settings have matching CLI flags, such as `--iterations 40` and
+`--normalization-low 0.01`. CLI values override YAML settings. Neutral values
+retain the reference behavior. The [method notes](method.md) describe their
+numerical implications.
 Solver settings and validation rules are defined in
 [configuration.py](../src/luma_fatal/configuration.py) and included in exported configs.
