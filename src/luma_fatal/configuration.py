@@ -424,9 +424,10 @@ class Config:
         merged = parent.copy()
         for name, value in own.items():
             if name in ("parameters", "processing", "image", "output", "numerics", "video"):
-                if not isinstance(value, dict) or not isinstance(parent.get(name), dict):
+                inherited = parent.get(name, {})
+                if not isinstance(value, dict) or not isinstance(inherited, dict):
                     raise ValueError(f"Inherited {name} section must be an object")
-                merged[name] = {**parent[name], **value}
+                merged[name] = {**inherited, **value}
             else:
                 merged[name] = value
         return merged
