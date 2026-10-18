@@ -45,6 +45,8 @@ record = process_image(
 `config` controls processing and `config_path` records the underlying file.
 The output extension must match the configured encoding. A file adapter processes
 one filter per call.
+Existing output files or metadata sidecars are refused. Failed runs remove
+artifacts created during publication.
 
 The record includes resolved settings, dimensions, color conversion details,
 dependency versions, and input/output hashes.

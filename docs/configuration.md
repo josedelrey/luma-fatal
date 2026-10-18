@@ -100,6 +100,8 @@ and export JPEG at quality 100 with 4:2:0 subsampling and no embedded profile.
 Use `--output-format png` with a `.png` destination for lossless export.
 Image output directories are created automatically. Input, output, and metadata
 sidecar paths must refer to distinct files, including hard links and symbolic links.
+Existing output files or sidecars are refused. The image and metadata are staged
+before publication, and handled publication failures remove files created by the run.
 
 ## Numerical controls
 
