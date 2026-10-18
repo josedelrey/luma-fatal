@@ -27,14 +27,15 @@ See the [method notes](docs/method.md) for processing order and numerical choice
 ## Install
 
 Requires Git, Python 3.11 or later, and [uv](https://docs.astral.sh/uv/).
-CI covers Linux and Windows with Python 3.11. Run commands from the repository root.
+CI covers Linux and Windows with Python 3.11.
 
 ```bash
 git clone https://github.com/josedelrey/luma-fatal.git
 cd luma-fatal
 uv sync --locked --python 3.11
-source .venv/bin/activate
 ```
+
+See the [configuration guide](docs/configuration.md) for shell setup and presets.
 
 Numba compiles numerical kernels on first use, so the first run takes longer.
 
@@ -92,6 +93,14 @@ during testing. You'll need FFmpeg and ffprobe to run the video integration test
 Raanan Fattal, Dani Lischinski, and Michael Werman.
 [*Gradient Domain High Dynamic Range Compression*](https://doi.org/10.1145/566570.566573),
 SIGGRAPH 2002.
+
+- [Guided Image Filtering](https://people.csail.mit.edu/kaiming/publications/pami12guidedfilter.pdf).
+- [Edge-Preserving Decomposition for Multi-Scale Tone and Detail Manipulation](https://www.microsoft.com/en-us/research/video/edge-preserving-decomposition-for-multi-scale-tone-and-detail-manipulation/).
+- [Physically Based Rendering: Noise](https://www.pbr-book.org/3ed-2018/Texture/Noise).
+
+These additional references describe the filtering and noise constructions used
+here. They do not validate the particular artifact treatments tested in the
+[experimental studies](docs/experiments.md).
 
 Project-authored code is licensed under MIT. Color conversion includes skcms
 adaptations under BSD-3-Clause. Image credits and complete notices are in

@@ -2,8 +2,7 @@
 
 [Overview](../README.md) · [Configuration](configuration.md) · [Video](video.md)
 
-Run these examples from the repository root after installation. The caller must
-supply configuration paths explicitly.
+The caller must supply configuration paths explicitly.
 
 ## Images and arrays
 

@@ -8,5 +8,4 @@ limitations, and reproduction commands. Runtime options are in the
 - `investigate_cleanup.py`: synthetic, still, video, and timing comparisons.
 - `investigate_prenoise.py`: source-noise comparisons using the runtime implementation.
 
-Run from the repository root after installation. Keep inputs in ignored
-`local_inputs/` and generated artifacts in ignored `outputs/`.
+Keep inputs in ignored `local_inputs/` and generated artifacts in ignored `outputs/`.

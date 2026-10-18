@@ -2,13 +2,6 @@
 
 [Overview](../README.md) · [Video controls](video.md) · [Experiment scripts](../experiments/)
 
-After [installation](../README.md#install), run the following commands from the
-repository root. Activate the virtual environment once per shell session:
-
-```bash
-source .venv/bin/activate
-```
-
 These studies examine whether preprocessing can reduce compression artifacts
 that the Fattal filters amplify. The treatments are optional. The findings below
 come from local experiments on 2026-10-16 and 2026-10-17, with limited validation
