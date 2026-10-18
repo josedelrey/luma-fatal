@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from luma_fatal import FilterParams, apply_filter
+from luma_fatal import Config, FilterParams, ProcessingConfig, apply_filter
 from luma_fatal.core import _pyramid, _phi, _divergence, _sor, _normalize, _recombine
 from luma_fatal.numerics import fast_pow64, luminance_u8, scalar_math_f32
 from luma_fatal.probes import _probe_arrays
@@ -17,6 +17,40 @@ FIXTURES = Path(__file__).parent / "fixtures"
 MATH = json.loads((FIXTURES / "scalar-math.json").read_text())["trials"]
 PIPELINE = json.loads((FIXTURES / "core-supplied-floor.json").read_text())
 RAW_PIPELINE = json.loads((FIXTURES / "core-zero-luminance.json").read_text())
+
+
+@pytest.mark.parametrize("variant", [1, 2])
+@pytest.mark.parametrize("power_mode", ["approximate", "standard"])
+@pytest.mark.parametrize("alpha,peak", [(1e-42, 1), (1e-35, 100)])
+def test_attenuation_rejects_alpha_that_would_underflow_or_overflow(
+    variant, power_mode, alpha, peak
+):
+    log_luminance = np.zeros((33, 41), np.float32)
+    log_luminance[16, 20] = peak
+    with np.errstate(divide="raise", over="raise", invalid="raise", under="raise"):
+        with pytest.raises(ValueError, match="alpha is too small for the current image gradients"):
+            _phi([log_luminance], variant, FilterParams(alpha=alpha), power_mode=power_mode)
+
+
+@pytest.mark.parametrize("variant", [1, 2])
+@pytest.mark.parametrize("low_contrast", [False, True])
+def test_image_processing_rejects_unsafe_alpha_without_numeric_warnings(
+    variant, low_contrast
+):
+    if low_contrast:
+        pixels = np.full((33, 41, 3), 128, np.uint8)
+        pixels[16, 20] = 129
+    else:
+        pixels = np.random.default_rng(9).integers(0, 256, (33, 41, 3), np.uint8)
+    original = pixels.copy()
+    config = Config(
+        parameters=FilterParams(alpha=1e-42, fade=0),
+        processing=ProcessingConfig(resize=False),
+    )
+    with np.errstate(divide="raise", over="raise", invalid="raise"):
+        with pytest.raises(ValueError, match="increase parameters.alpha"):
+            apply_filter(pixels, variant, config=config)
+    np.testing.assert_array_equal(pixels, original)
 
 
 @pytest.mark.parametrize("trial", MATH, ids=[trial["function"] for trial in MATH])

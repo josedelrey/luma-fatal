@@ -69,6 +69,9 @@ such as `--tone-strength 60`. Values use a 0–100 scale except `output_gamma`.
 | `black_level` | 0 | Filtered output black endpoint, as a percentage of white |
 | `white_level` | 100 | Filtered output white endpoint, strictly above black |
 
+Extremely small alpha values can also fail during filtering if the image's
+gradients would cause division by zero or overflow. Increase alpha in that case.
+
 Tone strength 0 retains source brightness while other color and source treatments
 still apply. Fade blends the completed RGB result with the original instead.
 Input preparation still applies at fade 100.
@@ -102,7 +105,7 @@ Image output directories are created automatically. Input and output paths must 
 | Key | Reference value | Behavior |
 | --- | --- | --- |
 | `numerics.iterations` | `80` | Poisson solver iteration count, at least 1 |
-| `numerics.relaxation` | `1.9` | Poisson relaxation factor, greater than 0 and below 2 |
+| `numerics.relaxation` | `1.9` | Poisson relaxation factor, strictly between 0 and 2 after float32 conversion |
 | `numerics.pyramid_min_size` | `32` | Minimum pyramid dimension, at least 2 |
 | `numerics.normalization_low` | `0.001` | Lower normalization quantile, below `normalization_high` |
 | `numerics.normalization_high` | `0.995` | Upper normalization quantile, below 1 |
@@ -115,6 +118,9 @@ Image output directories are created automatically. Input and output paths must 
 | `numerics.shadow_softness` | `0` | Smooth the shadow cutoff with a half-width of 1–255 luminance levels |
 | `numerics.luminance_mode` | `rounded` | Select rounded or `fractional` luminance before the logarithm |
 | `processing.working_resampler` | `nearest` | Select `nearest`, `bilinear`, or `bicubic` reduction to working resolution |
+
+The solver also converts `1 - relaxation` to float32. This weight must stay
+strictly between -1 and 1, so values too close to either endpoint are rejected.
 
 All numerical settings have matching CLI flags, such as `--iterations 40` and
 `--normalization-low 0.01`. CLI values override YAML settings. Neutral values

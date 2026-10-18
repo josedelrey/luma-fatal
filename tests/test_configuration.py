@@ -13,6 +13,7 @@ from luma_fatal import (
     Config,
     FilterParams,
     ImageConfig,
+    NumericsConfig,
     OutputConfig,
     ProcessingConfig,
     VideoConfig,
@@ -65,6 +66,63 @@ def test_device_and_custom_limits(device, edge):
 def test_invalid_config_is_rejected(values):
     with pytest.raises(ValueError):
         Config.from_dict(values)
+
+
+@pytest.mark.parametrize("relaxation", [1e-50, 1e-8, 1.999999999])
+def test_relaxation_rejects_float32_solver_boundary_weights(relaxation):
+    with pytest.raises(ValueError, match="relaxation must keep float32 solver weights"):
+        NumericsConfig(relaxation=relaxation)
+
+
+@pytest.mark.parametrize("relaxation", [3e-8, 0.5, 1, 1.9, 1.9999999])
+def test_relaxation_accepts_weights_inside_float32_bounds(relaxation):
+    assert NumericsConfig(relaxation=relaxation).relaxation == relaxation
+
+
+@pytest.mark.parametrize("command", ["apply", "evaluate", "video"])
+@pytest.mark.parametrize("relaxation", ["1e-50", "1e-8", "1.999999999"])
+def test_invalid_relaxation_cli_fails_before_processing(
+    tmp_path, capsys, command, relaxation
+):
+    destination = tmp_path / "output"
+    arguments = [command, str(tmp_path / "missing")]
+    if command == "evaluate":
+        arguments.append(str(tmp_path / "references"))
+    arguments += [str(destination), "--relaxation", relaxation]
+    with pytest.raises(SystemExit) as error:
+        main(arguments)
+    assert error.value.code == 2
+    assert "relaxation must keep float32 solver weights" in capsys.readouterr().err
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize("suffix", ["yaml", "toml", "json"])
+def test_invalid_relaxation_in_config_is_rejected(tmp_path, suffix):
+    path = tmp_path / f"settings.{suffix}"
+    path.write_text({
+        "yaml": "numerics:\n  relaxation: 1.999999999\n",
+        "toml": "[numerics]\nrelaxation = 1.999999999\n",
+        "json": '{"numerics": {"relaxation": 1.999999999}}',
+    }[suffix])
+    with pytest.raises(ValueError, match="relaxation must keep float32 solver weights"):
+        Config.load(path)
+
+
+def test_unsafe_alpha_cli_does_not_write_output(tmp_path, capsys):
+    source = tmp_path / "input.png"
+    pixels = np.random.default_rng(9).integers(0, 256, (33, 41, 3), np.uint8)
+    Image.fromarray(pixels).save(source)
+    source_bytes = source.read_bytes()
+    destination = tmp_path / "result.png"
+    with np.errstate(divide="raise", over="raise", invalid="raise"):
+        with pytest.raises(SystemExit) as error:
+            main(["apply", str(source), str(destination), "--alpha", "1e-42",
+                  "--fade", "0", "--output-format", "png"])
+    assert error.value.code == 2
+    assert "increase parameters.alpha" in capsys.readouterr().err
+    assert not destination.exists()
+    assert not destination.with_suffix(".meta.json").exists()
+    assert source.read_bytes() == source_bytes
 
 
 @pytest.mark.parametrize("alpha", [1e-50, 1e-44])
