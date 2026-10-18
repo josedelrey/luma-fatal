@@ -136,7 +136,8 @@ def _phi(
     if detail_level >= len(pyramid):
         return np.ones_like(pyramid[0])
     phi = np.ones_like(pyramid[-1])
-    alpha = np.float32(params.alpha) / np.float32(100)
+    with np.errstate(under="ignore"):
+        alpha = np.float32(params.alpha) / np.float32(100)
     exponent = np.float32(np.float32(params.beta) / np.float32(100) - np.float32(1))
     noise = np.float32(params.noise) / np.float32(100)
     for level in range(len(pyramid) - 1, -1, -1):
@@ -145,7 +146,18 @@ def _phi(
             value = np.ones_like(gradient)
             mask = gradient > np.float32(gradient_threshold)
             if np.any(mask) and average > 0:
-                ratio = (gradient[mask] + noise) / np.float32(alpha * average)
+                with np.errstate(under="ignore"):
+                    denominator = np.float32(alpha * average)
+                numerator = gradient[mask] + noise
+                if denominator == 0 or (
+                    float(numerator.max()) / float(denominator)
+                    > float(np.finfo(np.float32).max)
+                ):
+                    raise ValueError(
+                        "alpha is too small for the current image gradients, "
+                        "increase parameters.alpha"
+                    )
+                ratio = numerator / denominator
                 value[mask] = power64(ratio, exponent, power_mode).astype(np.float32)
             if variant == 1:
                 phi *= value

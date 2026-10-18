@@ -116,6 +116,14 @@ class NumericsConfig:
         _finite(
             "relaxation", self.relaxation, 0, 2, exclusive_min=True, exclusive_max=True
         )
+        with np.errstate(under="ignore"):
+            old_weight = np.float32(1 - self.relaxation)
+            new_weight = np.float32(self.relaxation)
+        if not (-1 < old_weight < 1 and 0 < new_weight < 2):
+            raise ValueError(
+                "relaxation must keep float32 solver weights strictly inside "
+                "(-1, 1) and (0, 2)"
+            )
         _integer("pyramid_min_size", self.pyramid_min_size, 2)
         _finite("normalization_low", self.normalization_low, 0, 1, exclusive_max=True)
         _finite("normalization_high", self.normalization_high, 0, 1, exclusive_max=True)
@@ -161,7 +169,9 @@ class FilterParams:
                 raise ValueError(f"{name} must be finite and between 0 and 100")
         if self.alpha == 0:
             raise ValueError("alpha must be greater than zero")
-        if np.float32(self.alpha) / np.float32(100) == 0:
+        with np.errstate(under="ignore"):
+            scaled_alpha = np.float32(self.alpha) / np.float32(100)
+        if scaled_alpha == 0:
             raise ValueError("alpha must remain positive in float32 after division by 100")
         if self.black_level >= self.white_level:
             raise ValueError("black_level must be below white_level")
