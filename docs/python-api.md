@@ -23,7 +23,7 @@ directly. When the configuration specifies `filter: both`, `apply_filter` requir
 an explicit `variant=1` or `variant=2`.
 
 In-memory processing does not apply file encoding settings or create run records.
-Validation covers opaque SDR RGB. Straight RGBA is available as an explicit
+The API supports opaque SDR RGB. Straight RGBA is available as an explicit
 experimental extension, described in the [scope notes](method.md#scope).
 
 ## Image files

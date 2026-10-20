@@ -59,7 +59,6 @@ enlargement unchanged.
 
 Experimental controls skip their added operations when set to neutral values.
 Frozen references check numerical and encoding behavior for the tested cases.
-Equality across arbitrary platforms, versions, and inputs remains unproven.
 
 ## Color handling
 
@@ -72,10 +71,10 @@ inputs, while NumPy callers must supply already interpreted RGB pixels.
 
 ## Scope
 
-The validated image workflow covers opaque 8-bit SDR JPEG and PNG. It does not
-cover HEIC, high-bit-depth images, transparency, or arbitrary ICC LUT transforms.
+The image workflow supports opaque 8-bit SDR JPEG and PNG. HEIC, high-bit-depth
+images, and arbitrary ICC LUT transforms are outside its supported scope.
 Straight RGBA is available through explicit configuration or the `core` profile,
-although compatibility coverage is limited.
+as an experimental extension.
 
 The [video adapter](video.md) accepts tagged BT.709 CFR input and produces silent
 H.264 output. It filters each frame independently, with source cleanup retaining

@@ -2,7 +2,7 @@
 
 Research scripts for multiscale source cleanup and pre-filter noise.
 The [experiment notes](../docs/experiments.md) document methods, findings,
-limitations, and reproduction commands. Runtime options are in the
+and reproduction commands. Runtime options are in the
 [video guide](../docs/video.md).
 
 - `investigate_cleanup.py`: synthetic, still, video, and timing comparisons.
