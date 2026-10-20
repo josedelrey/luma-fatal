@@ -8,9 +8,9 @@ The filter builds a log-luminance pyramid, attenuates its gradients, and uses a
 Poisson solver to reconstruct luminance. It then recombines the reconstructed
 brightness with the source RGB. Fattal 1 accumulates attenuation across scales,
 while Fattal 2 replaces the attenuation field at each finer scale. Both are
-project variants of the approach described by Fattal, Lischinski, and Werman in
-[*Gradient Domain High Dynamic Range Compression*](https://doi.org/10.1145/566570.566573),
-SIGGRAPH 2002. The implementation operates on 8-bit SDR inputs.
+project variants of the approach described by
+[Fattal, Lischinski, and Werman (2002)](#references).
+The implementation operates on 8-bit SDR inputs.
 
 ## Processing order
 
@@ -80,3 +80,9 @@ The [video adapter](video.md) prepares inputs through FFmpeg and produces silent
 SDR H.264 output at a constant frame rate. It filters each frame independently,
 with source cleanup retaining only mask history. Audio preservation and temporal
 stabilization are not implemented.
+
+## References
+
+- Raanan Fattal, Dani Lischinski, and Michael Werman (2002).
+  [Gradient Domain High Dynamic Range Compression](https://doi.org/10.1145/566570.566573).
+  *SIGGRAPH 2002*, pp. 249–256.

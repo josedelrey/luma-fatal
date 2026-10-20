@@ -120,8 +120,15 @@ available in the Git checkout but are excluded from release distributions.
 
 ## Background
 
-- [Guided Image Filtering](https://people.csail.mit.edu/kaiming/publications/pami12guidedfilter.pdf).
-- [Edge-Preserving Decomposition for Multi-Scale Tone and Detail Manipulation](https://www.microsoft.com/en-us/research/video/edge-preserving-decomposition-for-multi-scale-tone-and-detail-manipulation/).
-- [Physically Based Rendering: Noise](https://www.pbr-book.org/3ed-2018/Texture/Noise).
+- Kaiming He, Jian Sun, and Xiaoou Tang (2013).
+  [Guided Image Filtering](https://people.csail.mit.edu/kaiming/publications/pami12guidedfilter.pdf).
+  *IEEE Transactions on Pattern Analysis and Machine Intelligence*, 35(6), pp. 1397–1409.
+- Zeev Farbman, Raanan Fattal, Dani Lischinski, and Richard Szeliski (2008).
+  [Edge-Preserving Decompositions for Multi-Scale Tone and Detail Manipulation](https://doi.org/10.1145/1360612.1360666).
+  *ACM Transactions on Graphics*, 27(3), Article 67.
+- Matt Pharr, Wenzel Jakob, and Greg Humphreys (2016).
+  [Noise](https://www.pbr-book.org/3ed-2018/Texture/Noise).
+  In *Physically Based Rendering: From Theory to Implementation*, 3rd ed., Section 10.6.
+  Morgan Kaufmann.
 
 These references describe the filtering and noise constructions used here.
