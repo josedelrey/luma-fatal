@@ -2,12 +2,13 @@
 
 import hashlib
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from luma_fatal import Config, FilterParams, ProcessingConfig, apply_filter
+from luma_fatal import Config, FilterParams, NumericsConfig, ProcessingConfig, apply_filter
 from luma_fatal.core import _pyramid, _phi, _divergence, _sor, _normalize, _recombine
 from luma_fatal.numerics import fast_pow64, luminance_u8, scalar_math_f32
 from luma_fatal.probes import _probe_arrays
@@ -21,36 +22,64 @@ RAW_PIPELINE = json.loads((FIXTURES / "core-zero-luminance.json").read_text())
 
 @pytest.mark.parametrize("variant", [1, 2])
 @pytest.mark.parametrize("power_mode", ["approximate", "standard"])
-@pytest.mark.parametrize("alpha,peak", [(1e-42, 1), (1e-35, 100)])
-def test_attenuation_rejects_alpha_that_would_underflow_or_overflow(
-    variant, power_mode, alpha, peak
+@pytest.mark.parametrize("alpha,peak", [(1e-43, 1), (1e-42, 1), (1e-35, 100)])
+@pytest.mark.parametrize("beta", [0, 80, 100])
+def test_attenuation_handles_alpha_with_unsafe_float32_division(
+    variant, power_mode, alpha, peak, beta
 ):
     log_luminance = np.zeros((33, 41), np.float32)
     log_luminance[16, 20] = peak
     with np.errstate(divide="raise", over="raise", invalid="raise", under="raise"):
-        with pytest.raises(ValueError, match="alpha is too small for the current image gradients"):
-            _phi([log_luminance], variant, FilterParams(alpha=alpha), power_mode=power_mode)
+        phi = _phi([log_luminance], variant, FilterParams(alpha=alpha, beta=beta),
+                   power_mode=power_mode)
+    assert phi.dtype == np.float32
+    assert np.isfinite(phi).all()
+    assert np.all((phi >= 0) & (phi <= 1))
+    affected = np.zeros_like(log_luminance, dtype=bool)
+    affected[[15, 17, 16, 16], [20, 20, 19, 21]] = True
+    np.testing.assert_array_equal(phi[~affected], 1)
+    if power_mode == "standard":
+        # An isolated peak has four gradients of peak / 2 and mean 2 * peak / N.
+        with np.errstate(under="ignore"):
+            scaled_alpha = np.float32(alpha) / np.float32(100)
+        average = np.float32(2 * peak) / np.float32(log_luminance.size)
+        exponent = np.float32(np.float32(beta) / np.float32(100) - np.float32(1))
+        expected = ((float(peak) / 2) / (float(scaled_alpha) * float(average))) ** float(exponent)
+        np.testing.assert_allclose(phi[affected], expected, rtol=1e-6,
+                                   atol=float(np.nextafter(np.float32(0), np.float32(1))))
 
 
 @pytest.mark.parametrize("variant", [1, 2])
 @pytest.mark.parametrize("low_contrast", [False, True])
-def test_image_processing_rejects_unsafe_alpha_without_numeric_warnings(
-    variant, low_contrast
+@pytest.mark.parametrize("power_mode", ["approximate", "standard"])
+@pytest.mark.parametrize("alpha,beta,shape", [
+    (1e-42, 80, (33, 41)), (1e-43, 0, (129, 161)), (1e-35, 100, (65, 81)),
+])
+def test_image_processing_handles_tiny_alpha_without_numeric_warnings(
+    variant, low_contrast, power_mode, alpha, beta, shape
 ):
     if low_contrast:
-        pixels = np.full((33, 41, 3), 128, np.uint8)
+        pixels = np.full((*shape, 3), 128, np.uint8)
         pixels[16, 20] = 129
     else:
-        pixels = np.random.default_rng(9).integers(0, 256, (33, 41, 3), np.uint8)
+        pixels = np.random.default_rng(9).integers(0, 256, (*shape, 3), np.uint8)
     original = pixels.copy()
     config = Config(
-        parameters=FilterParams(alpha=1e-42, fade=0),
+        parameters=FilterParams(alpha=alpha, beta=beta, fade=0),
         processing=ProcessingConfig(resize=False),
+        numerics=NumericsConfig(power_mode=power_mode),
     )
     with np.errstate(divide="raise", over="raise", invalid="raise"):
-        with pytest.raises(ValueError, match="increase parameters.alpha"):
-            apply_filter(pixels, variant, config=config)
+        result = apply_filter(pixels, variant, config=config)
+        repeated = apply_filter(pixels, variant, config=config)
+    assert result.dtype == np.uint8
+    assert result.shape == pixels.shape
+    np.testing.assert_array_equal(result, repeated)
     np.testing.assert_array_equal(pixels, original)
+    if beta == 100:
+        # A zero exponent makes attenuation independent of alpha in either mode.
+        control = replace(config, parameters=replace(config.parameters, alpha=1))
+        np.testing.assert_array_equal(result, apply_filter(pixels, variant, config=control))
 
 
 @pytest.mark.parametrize("trial", MATH, ids=[trial["function"] for trial in MATH])

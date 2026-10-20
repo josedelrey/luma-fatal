@@ -10,6 +10,15 @@ from .core import apply_core
 from .image_io import decode_input, prepare_image
 
 
+def _prepare_pillow_input(image: Image.Image, config: Config) -> Image.Image:
+    image = decode_input(
+        image,
+        config.processing.effective_max_input_pixels,
+        config.image.decode_sampling,
+    )
+    return prepare_image(image, config.image)
+
+
 def apply_filter(
     image: Image.Image | np.ndarray,
     variant: int | None = None,
@@ -40,12 +49,11 @@ def apply_filter(
         raise ValueError("variant must be 1 or 2")
     pil_input = isinstance(image, Image.Image)
     if pil_input:
-        image = decode_input(
-            image,
-            config.processing.effective_max_input_pixels,
-            config.image.decode_sampling,
-        )
-        image = prepare_image(image, config.image)
+        if min(image.size) < 1:
+            raise ValueError("image must have nonzero dimensions")
+        if params.fade == 100:
+            return image.copy()
+        image = _prepare_pillow_input(image, config)
         array = np.asarray(image).copy()
     else:
         # Arrays have no ICC or EXIF metadata and are already interpreted RGB.
@@ -54,6 +62,8 @@ def apply_filter(
         raise ValueError("image must be uint8 with shape (height, width, 3 or 4)")
     if min(array.shape[:2]) < 1:
         raise ValueError("image must have nonzero dimensions")
+    if params.fade == 100:
+        return array.copy()
     if (
         params.fade < 100
         and config.processing.transparency == "reject"

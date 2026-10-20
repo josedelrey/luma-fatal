@@ -22,7 +22,7 @@ The default filter is Fattal 1. Fade defaults to 0, applying the full effect.
 ## Presets
 
 The [configs/](../configs/) directory contains all presets, with a matching
-`fattal-2` version for each `fattal-1` family. All presets use `fade: 0`.
+`fattal-2` version for each `fattal-1` family.
 
 | Preset | Purpose |
 | --- | --- |
@@ -71,13 +71,9 @@ The settings below belong to `parameters` and use a 0–100 scale, except for
 | `black_level` | 0 | Filtered output black endpoint, as a percentage of white |
 | `white_level` | 100 | Filtered output white endpoint, strictly above black |
 
-Even if an alpha value passes validation, an extremely small value can cause
-division by zero or overflow for some image gradients. Increase alpha if filtering
-reports either condition.
-
 At tone strength 0, the filter retains source brightness while still applying
 other color and source treatments. Fade blends the completed RGB result with the
-original. Input preparation applies even at fade 100.
+original.
 
 For a softer result:
 
@@ -87,26 +83,19 @@ luma-fatal apply assets/lantern-garden-original.png outputs/softer.png \
   --tone-strength 60 --highlight-compression 60 --black-level 5 --white-level 95
 ```
 
-Clipped input highlights cannot be recovered. Raising the black level can reduce
-saturation, and Fade can move pixels outside the selected output range.
+Raising the black level can reduce saturation, and Fade can move pixels outside
+the selected output range.
 See [processing order](method.md#processing-order) for interactions between controls.
 
 ## Resolution and export
 
-`processing.max_input_pixels` limits the prepared input area, so it can also reduce
-the output size. `processing.max_edge` limits the longest edge at which the effect
-runs. After filtering, the image is enlarged to the prepared input dimensions.
-Either limit can affect the appearance. Use `--max-input-pixels` and `--max-edge`
-to override them from the CLI.
+`processing.max_edge` limits the longest edge at which the effect runs. After
+filtering, the image is enlarged to the prepared input dimensions.
+Use `--max-input-pixels` and `--max-edge` to override resolution limits from the CLI.
 
 Reference presets apply EXIF orientation, convert supported ICC profiles to sRGB,
 and export JPEG at quality 100 with 4:2:0 subsampling and no embedded profile.
 For lossless export, use `--output-format png` with a `.png` destination.
-Output directories are created automatically, but existing output files and
-metadata sidecars are never overwritten. Input, output, and sidecar paths must
-refer to distinct files, even when accessed through hard links or symbolic links.
-The image and metadata are staged before publication. If publication fails with
-a handled error, files created by the run are removed.
 
 ## Numerical controls
 
@@ -135,4 +124,4 @@ All numerical settings have matching CLI flags, such as `--iterations 40` and
 values preserve reference behavior. See the [method notes](method.md) for the
 numerical implications and
 [configuration.py](../src/luma_fatal/configuration.py) for solver settings and
-validation rules. Exported configurations include these settings.
+validation rules.

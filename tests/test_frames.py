@@ -59,6 +59,23 @@ def test_interleaved_streams_keep_independent_configurations():
     np.testing.assert_array_equal(next(identity_stream), frame)
 
 
+@pytest.mark.parametrize("with_cleanup", [False, True])
+def test_fade_identity_bypasses_frame_preparation(with_cleanup):
+    frame = np.random.default_rng(51).integers(0, 256, (35, 47, 3), np.uint8)
+    config = Config(
+        parameters=FilterParams(fade=100),
+        processing=ProcessingConfig(max_input_pixels=100, max_edge=4),
+    )
+
+    def cleanup(*args):
+        raise AssertionError("Fade 100 must bypass source cleanup")
+
+    options = {"source_cleanup": cleanup} if with_cleanup else {}
+    result = next(process_frames([frame], config=config, **options))
+    np.testing.assert_array_equal(result, frame)
+    assert result is not frame
+
+
 @pytest.mark.parametrize(
     "frame", [np.zeros((3, 4, 4), np.uint8), np.zeros((3, 4, 3), float), [[1, 2, 3]]]
 )

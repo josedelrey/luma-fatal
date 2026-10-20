@@ -108,20 +108,20 @@ def test_invalid_relaxation_in_config_is_rejected(tmp_path, suffix):
         Config.load(path)
 
 
-def test_unsafe_alpha_cli_does_not_write_output(tmp_path, capsys):
+def test_tiny_alpha_cli_processes_image_without_numeric_warnings(tmp_path):
     source = tmp_path / "input.png"
     pixels = np.random.default_rng(9).integers(0, 256, (33, 41, 3), np.uint8)
     Image.fromarray(pixels).save(source)
     source_bytes = source.read_bytes()
     destination = tmp_path / "result.png"
     with np.errstate(divide="raise", over="raise", invalid="raise"):
-        with pytest.raises(SystemExit) as error:
-            main(["apply", str(source), str(destination), "--alpha", "1e-42",
-                  "--fade", "0", "--output-format", "png"])
-    assert error.value.code == 2
-    assert "increase parameters.alpha" in capsys.readouterr().err
-    assert not destination.exists()
-    assert not destination.with_suffix(".meta.json").exists()
+        main(["apply", str(source), str(destination), "--alpha", "1e-42",
+              "--fade", "0", "--output-format", "png"])
+    with Image.open(destination) as output:
+        expected = apply_filter(pixels, config=Config(parameters=FilterParams(alpha=1e-42)))
+        np.testing.assert_array_equal(np.asarray(output), expected)
+    record = json.loads(destination.with_suffix(".meta.json").read_text())
+    assert record["configuration"]["parameters"]["alpha"] == 1e-42
     assert source.read_bytes() == source_bytes
 
 
@@ -306,7 +306,8 @@ def test_cli_overrides_file_and_records_effective_configuration(tmp_path, capsys
         )
 
 
-def test_orientation_is_configurable_and_recorded(tmp_path, capsys):
+@pytest.mark.parametrize("fade", [0, 100])
+def test_orientation_is_configurable_and_recorded(tmp_path, capsys, fade):
     source = tmp_path / "rotated.jpg"
     image = Image.new("RGB", (35, 27), (70, 110, 30))
     exif = Image.Exif()
@@ -320,12 +321,12 @@ def test_orientation_is_configurable_and_recorded(tmp_path, capsys):
                 str(source),
                 str(output),
                 "--fade",
-                "100",
+                str(fade),
                 "--exif-orientation",
                 policy,
             ]
         )
-        assert Image.open(output).size == size
+        assert Image.open(output).size == ((35, 27) if fade == 100 else size)
         record = json.loads(output.with_suffix(".meta.json").read_text())
         assert record["source_dimensions"] == [35, 27]
         assert record["source_mode"] == "RGB"
@@ -352,10 +353,12 @@ def test_icc_interpretation_and_optional_profile_embedding(tmp_path, capsys):
     actual = apply_filter(
         image,
         config=Config(
-            parameters=FilterParams(fade=100), image=ImageConfig(color_space="srgb")
+            image=ImageConfig(color_space="srgb")
         ),
     )
-    np.testing.assert_array_equal(np.asarray(actual), np.asarray(transformed))
+    np.testing.assert_array_equal(
+        np.asarray(actual), apply_filter(np.asarray(transformed))
+    )
     rgb = Image.new("RGB", (16, 16), (90, 100, 110))
     srgb = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()
     rgb.save(source, icc_profile=srgb)
@@ -388,7 +391,8 @@ def test_arrays_are_already_interpreted_pixels_under_photo_defaults():
     )
 
 
-def test_photo_export_applies_exif_and_requested_jpeg_codec(tmp_path, capsys):
+@pytest.mark.parametrize("fade", [0, 100])
+def test_photo_export_applies_exif_and_requested_jpeg_codec(tmp_path, capsys, fade):
     source = tmp_path / "phone.jpg"
     pixels = np.random.default_rng(30).integers(0, 256, (27, 35, 3), np.uint8)
     exif = Image.Exif()
@@ -397,18 +401,21 @@ def test_photo_export_applies_exif_and_requested_jpeg_codec(tmp_path, capsys):
     Image.fromarray(pixels).save(source, exif=exif, icc_profile=profile)
     original_bytes = source.read_bytes()
     outputs = tmp_path / "outputs"
-    main(["apply", str(source), str(outputs), "--filter", "both", "--fade", "100"])
+    main(["apply", str(source), str(outputs), "--filter", "both", "--fade", str(fade)])
     with Image.open(source) as decoded:
-        rotated = np.rot90(np.asarray(decoded), k=3).copy()
-    control = BytesIO()
-    Image.fromarray(rotated).save(control, format="JPEG", quality=100, subsampling=2)
-    control.seek(0)
-    with Image.open(control) as expected:
-        for variant in (1, 2):
+        pixels = np.asarray(decoded).copy()
+    if fade < 100:
+        pixels = np.rot90(pixels, k=3).copy()
+    for variant in (1, 2):
+        filtered = apply_filter(pixels, variant, FilterParams(fade=fade))
+        control = BytesIO()
+        Image.fromarray(filtered).save(control, format="JPEG", quality=100, subsampling=2)
+        control.seek(0)
+        with Image.open(control) as expected:
             output = outputs / f"fattal{variant}.jpg"
             with Image.open(output) as actual:
                 assert actual.format == "JPEG"
-                assert actual.size == (27, 35)
+                assert actual.size == ((35, 27) if fade == 100 else (27, 35))
                 assert JpegImagePlugin.get_sampling(actual) == 2
                 assert all(
                     value == 1

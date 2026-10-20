@@ -151,14 +151,17 @@ def _phi(
                     float(numerator.max()) / float(denominator)
                     > float(np.finfo(np.float32).max)
                 ):
-                    raise ValueError(
-                        "alpha is too small for the current image gradients, "
-                        "increase parameters.alpha"
-                    )
-                ratio = numerator / denominator
-                value[mask] = power64(ratio, exponent, power_mode).astype(np.float32)
+                    # Widen only the unsafe division, preserving the reference path.
+                    denominator64 = np.float64(alpha) * np.float64(average)
+                    ratio = numerator.astype(np.float64) / denominator64
+                else:
+                    ratio = numerator / denominator
+                # Vanishing attenuation may round to zero at extreme settings.
+                with np.errstate(under="ignore"):
+                    value[mask] = power64(ratio, exponent, power_mode).astype(np.float32)
             if variant == 1:
-                phi *= value
+                with np.errstate(under="ignore"):
+                    phi *= value
             else:
                 # Variant 2 replaces the attenuation field at each finer level.
                 phi = value

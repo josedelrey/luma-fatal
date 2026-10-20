@@ -183,7 +183,7 @@ def test_cli_override_and_effect_metadata_record_the_actual_backend(tmp_path, ca
             str(source_path),
             str(output),
             "--fade",
-            "100",
+            "0",
             "--output-format",
             "png",
             "--config",
@@ -193,14 +193,34 @@ def test_cli_override_and_effect_metadata_record_the_actual_backend(tmp_path, ca
         ]
     )
     with Image.open(output) as actual:
-        assert (
-            hashlib.sha256(actual.tobytes()).hexdigest() == row["expected_rgb_sha256"]
+        np.testing.assert_array_equal(
+            np.asarray(actual), apply_filter(np.asarray(prepare_image(image, ImageConfig())))
         )
     metadata = json.loads(output.with_suffix(".meta.json").read_text())
     assert metadata["color_conversion"]["backend"] == "matrix_trc"
     assert metadata["configuration"]["image"]["color_backend"] == "matrix_trc"
     assert "color.py" in metadata["implementation_sources_sha256"]
-    result = apply_filter(image, config=Config(parameters=FilterParams(fade=100)))
+    result = apply_filter(image, config=Config())
     assert result.info["_color_conversion"]["backend"] == "matrix_trc"
     with pytest.raises(ValueError, match="color_backend"):
         replace(ImageConfig(), color_backend="unknown")
+
+
+@pytest.mark.parametrize("malformed_profile", [False, True])
+def test_fade_identity_preserves_pixels_mode_and_metadata(malformed_profile):
+    row = next(r for r in GOLDENS["cases"] if r["id"] == "noise_display_p3")
+    image = source(row).convert("RGBA")
+    image.putalpha(128)
+    image.info["icc_profile"] = b"invalid" if malformed_profile else profile(row)
+    image.getexif()[274] = 6
+    image.info["exif"] = image.getexif().tobytes()
+    before = image.tobytes()
+    result = apply_filter(image, config=Config(parameters=FilterParams(fade=100)))
+    assert result is not image
+    assert result.size == image.size
+    assert result.mode == image.mode
+    assert result.tobytes() == before
+    assert result.info["icc_profile"] == image.info["icc_profile"]
+    assert result.getexif()[274] == 6
+    assert "_color_conversion" not in result.info
+    assert image.tobytes() == before
