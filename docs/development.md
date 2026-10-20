@@ -10,11 +10,10 @@ Run the development checks:
 uv sync --locked --python 3.11
 python -m pytest -q
 python scripts/check_presets.py
-uv build
 ```
 
-[CI](../.github/workflows/ci.yml) runs the test suite, preset checks, and distribution
-builds on Ubuntu and Windows with Python 3.11. FFmpeg and ffprobe are installed
+[CI](../.github/workflows/ci.yml) runs the test suite and preset checks on Ubuntu
+and Windows with Python 3.11. FFmpeg and ffprobe are installed
 there, and video integration tests must pass. In local runs, those tests are
 skipped if the tools are unavailable.
 
@@ -28,8 +27,8 @@ as well as agreement with the image API before lossy encoding.
 
 The preset checker compares dimensions, RGB pixels, encoded JPEG bytes, decoded
 pixels, and codec settings against [presets.json](../tests/fixtures/presets.json).
-Missing inputs or mismatches cause the check to fail. The checker never
-regenerates expected results. To retain outputs and a JSON report, run:
+The checker never regenerates expected results. To retain outputs and a JSON
+report, run:
 
 ```bash
 python scripts/check_presets.py --output outputs/preset-check
@@ -62,5 +61,3 @@ Its source and filtered result are 1448×1086 PNGs.
 
 README image sources and filtered results are kept in `assets/`. Use the ignored
 `local_inputs/` directory for experimental inputs and `outputs/` for generated artifacts.
-Source distributions include the documentation, presets, tests, and comparison
-assets, while wheels include the runtime and complete license notices.
