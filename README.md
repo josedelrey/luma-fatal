@@ -44,9 +44,11 @@ Numba compiles numerical kernels on first use, so the first run takes longer.
 Apply both filters to the bundled image:
 
 ```bash
-luma-fatal apply assets/lantern-garden-original.png outputs/comparison \
-  --config configs/fattal-1.yaml --filter both --output-format png
+luma-fatal apply assets/tea-by-the-water-original.png outputs/comparison \
+  --config configs/fattal-1.yaml --filter both --shadow-softness 6 --output-format png
 ```
+
+![Fattal 1 result](assets/tea-by-the-water-fattal-1.png)
 
 This writes `fattal1.png`, `fattal2.png`, and their `.meta.json` run records to
 `outputs/comparison/`. Replace the input path with your own JPEG or PNG.
