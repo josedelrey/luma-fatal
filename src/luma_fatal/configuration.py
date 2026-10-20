@@ -148,7 +148,7 @@ class FilterParams:
     beta: float = 80
     saturation: float = 100
     noise: float = 0
-    fade: float = 50
+    fade: float = 0
     output_gamma: float = 1.0
     tone_strength: float = 100
     highlight_compression: float = 0

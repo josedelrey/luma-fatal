@@ -15,6 +15,14 @@ from luma_fatal.cli import main as cli_main
 from scripts import check_presets
 
 
+@pytest.mark.parametrize(
+    "path", sorted((Path(__file__).resolve().parents[1] / "configs").glob("*.yaml")),
+    ids=lambda path: path.stem,
+)
+def test_presets_apply_full_effect(path):
+    assert configuration.Config.load(path).parameters.fade == 0
+
+
 def test_frozen_recipes_are_complete_and_independent_of_device_defaults(monkeypatch):
     _, presets = check_presets.load_contract()
     assert [entry["name"] for entry, _ in presets] == ["Fattal 1", "Fattal 2"]

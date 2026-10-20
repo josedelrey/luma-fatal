@@ -8,7 +8,7 @@ parameters:
   beta: 80
   saturation: 100
   noise: 0
-  fade: 50
+  fade: 0
   # Filtered RGB uses x^(1/gamma) before quantization and fade.
   output_gamma: 1.0
   tone_strength: 100
