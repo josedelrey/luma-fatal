@@ -21,7 +21,7 @@ import numpy as np
 from tqdm import tqdm
 
 from . import __version__
-from .configuration import Config, VideoConfig, resolve_config
+from .configuration import Config, VideoConfig, VIDEO_COLOR_PROFILES, resolve_config
 from .cleanup import MultiscaleSourceCleanup, SourceCleanup
 from .pipeline import process_frames
 from .prenoise import SourceNoise
@@ -112,20 +112,63 @@ def _fraction(value, name):
     return result
 
 
-def _validate_color(info):
-    if any(
-        info.get(key) != "bt709"
-        for key in ("color_space", "color_transfer", "color_primaries")
-    ):
-        raise ValueError(
-            "Video requires explicit BT.709 matrix, transfer and primaries tags"
-        )
-    if info.get("color_range") not in ("tv", "pc"):
-        raise ValueError("Video requires an explicit limited or full color range")
-    if info.get("pix_fmt") not in (
-        "yuv420p", "yuv422p", "yuv444p", "yuvj420p", "yuvj422p", "yuvj444p",
-    ):
-        raise ValueError("Video requires opaque 8-bit planar YUV SDR frames")
+def _known(value):
+    return value not in (None, "unknown", "unspecified", "reserved", "N/A")
+
+
+def _rgb_format(pixel_format):
+    return any(name in pixel_format for name in ("rgb", "bgr", "gbr")) or pixel_format == "pal8"
+
+
+def _resolve_color(info, settings):
+    """Resolve missing tags without replacing known metadata in automatic mode."""
+    rgb = _rgb_format(info.get("pix_fmt", ""))
+    assumptions = {}
+    keys = ("color_space", "color_transfer", "color_primaries")
+    if settings.input_color != "auto":
+        values = dict(zip(keys, VIDEO_COLOR_PROFILES[settings.input_color], strict=True))
+    else:
+        if info.get("color_transfer") in ("smpte2084", "arib-std-b67"):
+            profile = "bt2020-pq" if info["color_transfer"] == "smpte2084" else "bt2020-hlg"
+        elif rgb:
+            profile = "srgb"
+        elif "bt470bg" in (info.get("color_space"), info.get("color_primaries")):
+            profile = "bt601-pal"
+        elif "smpte170m" in (info.get("color_space"), info.get("color_primaries")):
+            profile = "bt601-ntsc"
+        elif "bt709" in (info.get("color_space"), info.get("color_primaries")):
+            profile = "bt709"
+        elif info["height"] <= 576 and info["width"] <= 1024:
+            profile = "bt601-pal" if info["height"] > 480 else "bt601-ntsc"
+        else:
+            profile = "bt709"
+        defaults = dict(zip(keys, VIDEO_COLOR_PROFILES[profile], strict=True))
+        if (info.get("color_space") in ("bt2020nc", "bt2020c")
+                or info.get("color_primaries") == "bt2020"):
+            defaults["color_space"] = "bt2020nc"
+            defaults["color_primaries"] = "bt2020"
+            if info.get("color_transfer") not in ("smpte2084", "arib-std-b67"):
+                defaults["color_transfer"] = "bt2020-10"
+        values = {}
+        for key in keys:
+            values[key] = info[key] if _known(info.get(key)) else defaults[key]
+            if not _known(info.get(key)):
+                assumptions[key] = values[key]
+    # RGB storage always has an identity matrix, even with a YUV color override.
+    if rgb:
+        values["color_space"] = "gbr"
+        if "color_space" in assumptions:
+            assumptions["color_space"] = "gbr"
+    if settings.input_range != "auto":
+        values["color_range"] = "tv" if settings.input_range == "limited" else "pc"
+    elif info.get("color_range") in ("tv", "pc"):
+        values["color_range"] = info["color_range"]
+    else:
+        values["color_range"] = "pc" if rgb or info.get("pix_fmt", "").startswith(
+            ("yuvj", "gray")
+        ) else "tv"
+        assumptions["color_range"] = values["color_range"]
+    return values, assumptions
 
 
 def _probe(path, executable):
@@ -135,37 +178,78 @@ def _probe(path, executable):
         ])
     )
     streams = report.get("streams", [])
-    videos = [s for s in streams if s.get("codec_type") == "video"]
-    if len(videos) != 1 or videos[0].get("disposition", {}).get("attached_pic"):
-        raise ValueError("Input must contain exactly one video stream without cover art")
+    videos = [s for s in streams if s.get("codec_type") == "video"
+              and not s.get("disposition", {}).get("attached_pic")]
+    if len(videos) != 1:
+        raise ValueError("Input must contain exactly one video stream, excluding cover art")
     stream = videos[0]
-    _validate_color(stream)
     if min(stream.get("width", 0), stream.get("height", 0)) < 2:
         raise ValueError("Video dimensions must be at least 2 by 2")
-    if stream.get("sample_aspect_ratio") != "1:1":
-        raise ValueError("Only square-pixel video is supported")
-    if stream.get("field_order") not in (None, "unknown", "progressive"):
-        raise ValueError("Interlaced video is not supported")
-    if stream.get("tags", {}).get("rotate") or any(
-        s.get("side_data_type") == "Display Matrix"
-        for s in stream.get("side_data_list", [])
-    ):
-        raise ValueError("Video display rotation/matrices are not supported")
     stream["audio_streams"] = sum(s.get("codec_type") == "audio" for s in streams)
     return stream
 
 
-def _scan_timing(path, stream, executable):
-    """Validate every decoded frame before output, with at most one tick of rounding."""
-    rate = _fraction(stream.get("avg_frame_rate"), "frame rate")
+def _sample_aspect_ratio(value):
+    if value in (None, "N/A", "0:1"):
+        return Fraction(1)
+    return _fraction(value.replace(":", "/"), "sample aspect ratio")
+
+
+def _geometry(stream):
+    sar = _sample_aspect_ratio(stream.get("sample_aspect_ratio"))
+    width, height = max(2, round(stream["width"] * sar)), stream["height"]
+    rotation = stream.get("tags", {}).get("rotate", 0)
+    for data in stream.get("side_data_list", []):
+        if data.get("side_data_type") == "Display Matrix":
+            rotation = data.get("rotation", 0)
+            # Perspective, skew and reflection need more than a rotation angle.
+            rows = data.get("displaymatrix", "").strip().splitlines()
+            if rows:
+                matrix = [int(v) for row in rows for v in row.split(":", 1)[1].split()]
+                rotations = {
+                    (65536, 0, 0, 65536), (0, -65536, 65536, 0),
+                    (-65536, 0, 0, -65536), (0, 65536, -65536, 0),
+                }
+                if (len(matrix) != 9
+                        or (matrix[0], matrix[1], matrix[3], matrix[4]) not in rotations
+                        or matrix[2] or matrix[5] or matrix[6] or matrix[7]
+                        or matrix[8] != 1073741824):
+                    raise ValueError("Unsupported video display matrix: requires a pure rotation")
+    try:
+        angle = float(rotation)
+        quarter = round(angle / 90)
+        if not np.isfinite(angle) or abs(angle - quarter * 90) > 0.001:
+            raise ValueError
+    except (ValueError, TypeError, OverflowError) as error:
+        raise ValueError("Video display rotation must be a multiple of 90 degrees") from error
+    rotation = quarter * 90 % 360
+    return (height, width) if rotation in (90, 270) else (width, height), rotation, sar
+
+
+def _source_rate(stream, settings):
+    for key in ("avg_frame_rate", "r_frame_rate"):
+        try:
+            return _fraction(stream.get(key), "frame rate")
+        except ValueError:
+            pass
+    if settings.frame_rate != "auto":
+        return Fraction(settings.frame_rate)
+    raise ValueError("Missing video frame rate: specify --frame-rate or video.frame_rate")
+
+
+def _scan_timing(path, stream, executable, settings):
+    """Scan source timing and reject changing geometry or color interpretation."""
+    rate = _source_rate(stream, settings)
     tick = _fraction(stream.get("time_base"), "time base")
-    if tick >= 1 / (2 * rate):
-        raise ValueError("Video time base is too coarse to validate constant frame rate")
+    color, _ = _resolve_color(stream, settings)
+    sar = _sample_aspect_ratio(stream.get("sample_aspect_ratio"))
     entries = (
         "pts,duration,pkt_duration,width,height,pix_fmt,color_range,color_space,"
         "color_transfer,color_primaries,interlaced_frame,sample_aspect_ratio"
     )
     count, first, previous = 0, None, None
+    variable = tick >= 1 / (2 * rate)
+    interlaced = stream.get("field_order") not in (None, "unknown", "progressive")
     command = [
         str(executable), "-v", "error", "-select_streams", str(stream["index"]),
         "-show_frames", "-show_entries", f"frame={entries}",
@@ -178,68 +262,105 @@ def _scan_timing(path, stream, executable):
                 for part in raw.decode("utf-8").strip().split("|")
                 if "=" in part
             )
-            if "pts" not in fields:
-                if "width" in fields:
-                    raise ValueError(
-                        "Every video frame must have a presentation timestamp"
-                    )
+            if "width" not in fields:
                 continue
             try:
                 pts = int(fields["pts"]) * tick
-            except ValueError as error:
-                raise ValueError(
-                    "Every video frame must have a presentation timestamp"
-                ) from error
+            except (KeyError, ValueError) as error:
+                raise ValueError("Every video frame must have a presentation timestamp") from error
+            if previous is not None and pts <= previous:
+                raise ValueError("Video presentation timestamps must increase strictly")
             if first is None:
                 first = pts
-            if (
-                previous is not None and pts <= previous
-            ) or abs(pts - first - count / rate) > tick:
-                raise ValueError(
-                    "Variable frame rate or discontinuous timestamps are not supported"
-                )
+            variable |= abs(pts - first - count / rate) > tick
             duration = fields.get("duration", fields.get("pkt_duration"))
-            if duration not in (None, "N/A", "0") and (
-                abs(int(duration) * tick - 1 / rate) > tick
-            ):
-                raise ValueError("Variable frame durations are not supported")
+            if duration not in (None, "N/A", "0"):
+                variable |= abs(int(duration) * tick - 1 / rate) > tick
             if any(int(fields.get(key, 0)) != stream[key] for key in ("width", "height")):
                 raise ValueError("Changing video dimensions are not supported")
-            _validate_color(fields)
-            if (
-                fields.get("interlaced_frame") != "0"
-                or fields.get("sample_aspect_ratio") != "1:1"
-            ):
-                raise ValueError("Only progressive square-pixel frames are supported")
-            if fields["color_range"] != stream["color_range"]:
-                raise ValueError("Changing video color range is not supported")
+            info = {**stream, **fields, "width": stream["width"], "height": stream["height"]}
+            if _resolve_color(info, settings)[0] != color or info.get("pix_fmt") != stream.get("pix_fmt"):
+                raise ValueError("Changing video color interpretation or pixel format is not supported")
+            if _sample_aspect_ratio(info.get("sample_aspect_ratio")) != sar:
+                raise ValueError("Changing video sample aspect ratio is not supported")
+            interlaced |= fields.get("interlaced_frame") == "1"
             previous = pts
             count += 1
         _check(p, log, "Video timing scan")
     if not count:
         raise ValueError("Input contains no decoded video frames")
-    return rate, count, first
+    if variable and settings.frame_rate == "auto":
+        # Prefer the nominal cadence over an average distorted by pauses or gaps.
+        try:
+            rate = _fraction(stream.get("r_frame_rate"), "nominal frame rate")
+        except ValueError:
+            pass
+    return rate, count, first, bool(variable), bool(interlaced)
 
 
-def _decode_command(executable, path, stream, deblock="off", deband="off"):
-    source_range = "limited" if stream["color_range"] == "tv" else "full"
-    conversion = (
-        "zscale=matrixin=709:transferin=709:primariesin=709:"
-        f"rangein={source_range}:matrix=gbr:transfer=iec61966-2-1:"
-        "primaries=709:range=full,format=gbrp,format=rgb24"
+def _decode_command(executable, path, stream, deblock="off", deband="off", *,
+                    color=None, dimensions=None, rotation=0, interlaced=False, rate=None):
+    color = color or {key: stream[key] for key in (
+        "color_space", "color_transfer", "color_primaries", "color_range",
+    )}
+    source_range = "limited" if color["color_range"] == "tv" else "full"
+    source = (
+        f"matrixin={color['color_space']}:transferin={color['color_transfer']}:"
+        f"primariesin={color['color_primaries']}:rangein={source_range}"
     )
-    prefilters = []
-    if deblock != "off":
-        block = {"weak4": 4, "weak8": 8}[deblock]
-        prefilters.append(f"deblock=filter=weak:block={block}")
-    if deband == "gentle":
-        prefilters.append("deband=1thr=0.008:2thr=0.008:3thr=0.008:range=8")
-    if prefilters:
-        conversion = ",".join(prefilters) + "," + conversion
+    filters = []
+    if interlaced:
+        filters.append("bwdif=mode=send_frame:parity=auto:deint=interlaced")
+    if rate is not None:
+        filters += ["setpts=PTS-STARTPTS", f"fps=fps={rate}:start_time=0:round=near"]
+    rgb = _rgb_format(stream.get("pix_fmt", ""))
+    if rgb:
+        filters.append("format=gbrp16le")
+    if deblock != "off" or deband != "off":
+        # Source cleanup operates on planar YUV. Preserve precision until RGB8.
+        if rgb:
+            filters += [
+                f"zscale={source}:matrix=709:transfer={color['color_transfer']}:"
+                f"primaries={color['color_primaries']}:range=full",
+                "format=yuv444p16le",
+            ]
+            source = (f"matrixin=709:transferin={color['color_transfer']}:"
+                      f"primariesin={color['color_primaries']}:rangein=full")
+        if deblock != "off":
+            block = {"weak4": 4, "weak8": 8}[deblock]
+            filters.append(f"deblock=filter=weak:block={block}")
+        if deband == "gentle":
+            filters.append("deband=1thr=0.008:2thr=0.008:3thr=0.008:range=8")
+    if color["color_transfer"] in ("smpte2084", "arib-std-b67"):
+        filters += [
+            f"zscale={source}:matrix=gbr:transfer=linear:primaries=709:range=full:npl=100",
+            "format=gbrpf32le",
+            # tonemap reads this tag for luma coefficients during desaturation.
+            "setparams=colorspace=bt709", "tonemap=tonemap=hable:desat=2:peak=10",
+            "zscale=matrixin=gbr:transferin=linear:primariesin=709:rangein=full:"
+            "matrix=gbr:transfer=iec61966-2-1:primaries=709:range=full",
+            "format=gbrp", "format=rgb24",
+        ]
+    else:
+        filters += [
+            f"zscale={source}:matrix=gbr:transfer=iec61966-2-1:primaries=709:range=full",
+            "format=gbrp", "format=rgb24",
+        ]
+    if dimensions is not None:
+        unrotated = dimensions[::-1] if rotation in (90, 270) else dimensions
+        if unrotated != (stream["width"], stream["height"]):
+            filters.append(f"scale={unrotated[0]}:{unrotated[1]}:flags=bicubic")
+        filters.append("setsar=1")
+    if rotation == 90:
+        filters.append("transpose=cclock")
+    elif rotation == 180:
+        filters += ["hflip", "vflip"]
+    elif rotation == 270:
+        filters.append("transpose=clock")
     return [
         str(executable), "-v", "error", "-xerror", "-nostdin", "-noautorotate",
         "-i", str(path), "-map", f"0:{stream['index']}", "-an", "-sn", "-dn",
-        "-vf", conversion,
+        "-vf", ",".join(filters),
         "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1",
     ]
 
@@ -288,11 +409,14 @@ def process_video(
     ffmpeg: str | Path = "ffmpeg",
     ffprobe: str | Path = "ffprobe",
 ) -> dict:
-    """Process tagged BT.709, progressive, square-pixel CFR video into silent MP4.
+    """Prepare and filter video into silent, square-pixel SDR H.264 MP4.
 
-    FFmpeg must provide zscale and libx264, plus optional source filters. Input
-    timestamps are validated in a separate streaming pass, then rebased to zero
-    without changing cadence.
+    FFmpeg must provide zscale and libx264, plus bwdif for interlaced input,
+    tonemap for HDR, and optional source filters. A streaming preflight validates
+    timestamps and stable source geometry/color. Missing color tags use recorded
+    assumptions. HDR uses Hable tone mapping with a 1000-nit peak and 100-nit white.
+    Variable timing is normalized to the nominal rate, unless frame_rate overrides
+    it. Progressive CFR input retains its cadence by default.
     Optional weak deblocking and gentle debanding run on decoded YUV before
     RGB conversion.
     Image preparation/export settings do not apply to video. Frames enter the
@@ -321,9 +445,16 @@ def process_video(
     if not isinstance(settings, VideoConfig):
         raise ValueError("video_config must be a VideoConfig")
     stream = _probe(source, ffprobe)
-    rate, expected, first = _scan_timing(source, stream, ffprobe)
+    normalized, rotation, sar = _geometry(stream)
+    color, assumptions = _resolve_color(stream, settings)
+    source_rate, source_count, first, variable, interlaced = _scan_timing(
+        source, stream, ffprobe, settings
+    )
+    rate = source_rate if settings.frame_rate == "auto" else Fraction(settings.frame_rate)
+    resample = variable or rate != source_rate
+    expected = None if resample else source_count
     prepared = input_size(
-        (stream["width"], stream["height"]),
+        normalized,
         config.processing.effective_max_input_pixels,
     )
     width, height = (edge + edge % 2 for edge in prepared)
@@ -357,7 +488,9 @@ def process_video(
         temporary = Path(directory) / "video.mp4"
         temporary_meta = Path(directory) / "video.meta.json"
         decode = _decode_command(
-            ffmpeg, source, stream, settings.deblock, settings.deband
+            ffmpeg, source, stream, settings.deblock, settings.deband,
+            color=color, dimensions=normalized, rotation=rotation, interlaced=interlaced,
+            rate=rate if resample else None,
         )
         encode = _encode_command(ffmpeg, temporary, width, height, rate, settings)
         with _process(
@@ -366,7 +499,7 @@ def process_video(
             with _process(
                 encode, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL
             ) as (encoder, encode_log):
-                frames = _decoded_frames(decoder.stdout, stream["width"], stream["height"])
+                frames = _decoded_frames(decoder.stdout, *normalized)
                 with tqdm(
                     total=expected, desc="Filtering frames", unit="frame",
                     file=sys.stderr, dynamic_ncols=True, disable=not progress,
@@ -397,7 +530,9 @@ def process_video(
                         ) from error
                 _check(decoder, decode_log, "Video decoding")
                 _check(encoder, encode_log, "Video encoding")
-        if count != expected:
+        if not count:
+            raise ValueError("Video preparation produced no frames: try a higher frame rate")
+        if expected is not None and count != expected:
             raise ValueError(f"Decoded frame count changed: expected {expected}, got {count}")
         record = dict(
             schema_version=1,
@@ -410,6 +545,7 @@ def process_video(
             configuration=config.to_dict(),
             video_configuration=asdict(settings),
             source_dimensions=[stream["width"], stream["height"]],
+            normalized_dimensions=list(normalized),
             prepared_dimensions=list(prepared),
             dimensions=[width, height],
             padding=dict(
@@ -420,18 +556,34 @@ def process_video(
             duration_seconds=float(count / rate),
             timing=dict(
                 source_first_pts_seconds=str(first),
+                source_frame_count=source_count,
+                source_variable_frame_rate=variable,
                 output_start_seconds=0,
-                policy="validated CFR, rebased to zero",
+                policy=("resampled to CFR, rebased to zero" if resample
+                        else "validated CFR, rebased to zero"),
             ),
             color_policy=dict(
-                input={key: stream[key] for key in (
+                input={key: stream.get(key) for key in (
                     "color_space", "color_transfer", "color_primaries",
                     "color_range", "pix_fmt",
                 )},
+                resolved_input=color,
+                assumptions=assumptions,
                 processing="full-range sRGB RGB8",
                 output="limited-range BT.709 YUV420P",
                 converter="FFmpeg zscale",
-                transfer_interpretation="display-referred BT.709 / BT.1886",
+                transfer_interpretation="FFmpeg zscale display-referred transfer",
+            ),
+            input_preparation=dict(
+                sample_aspect_ratio=str(sar),
+                rotation_degrees=rotation,
+                deinterlaced=interlaced,
+                frame_rate_resampled=resample,
+                hdr_tone_mapping=(
+                    dict(method="hable", peak_nits=1000, reference_white_nits=100, desat=2)
+                    if color["color_transfer"] in ("smpte2084", "arib-std-b67") else None
+                ),
+                filtergraph=decode[decode.index("-vf") + 1],
             ),
             audio_policy="discard",
             discarded_audio_streams=stream["audio_streams"],

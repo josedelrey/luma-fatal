@@ -10,7 +10,7 @@ from pathlib import Path
 from PIL import Image
 
 from .pipeline import apply_filter
-from .configuration import Config, FilterParams, resolve_config
+from .configuration import Config, FilterParams, VIDEO_COLOR_PROFILES, resolve_config
 from .images import process_image, STATUS, _write_json, _digest
 from .probes import generate_probes
 from .validation import compare_images, write_difference_panel
@@ -82,6 +82,7 @@ def _settings(args: argparse.Namespace) -> Config:
             "crf", "preset", "deblock", "deband", "flat_cleanup",
             "flat_cleanup_mode", "flat_cleanup_coarse_strength", "flat_cleanup_sigma",
             "pre_noise_rms", "pre_noise_kind", "pre_noise_masked", "pre_noise_seed",
+            "frame_rate", "input_color", "input_range",
         )
         if getattr(args, name, None) is not None
     }
@@ -232,13 +233,25 @@ def main(argv: list[str] | None = None) -> None:
     apply.add_argument("--filter", choices=["fattal1", "fattal2", "both"], default=None)
     video = commands.add_parser(
         "video",
-        help="Process tagged BT.709 constant-frame-rate video into silent H.264 MP4",
+        help="Prepare and filter video into silent SDR H.264 MP4",
     )
     video.add_argument("input", type=Path)
     video.add_argument("output", type=Path)
     video.add_argument("--filter", choices=("fattal1", "fattal2"), default=None)
     video.add_argument("--crf", type=int, default=None)
     video.add_argument("--preset", default=None, help="H.264 encoder speed preset")
+    video.add_argument(
+        "--frame-rate", default=None,
+        help="Output fps, such as 30 or 30000/1001, or auto to use the source rate",
+    )
+    video.add_argument(
+        "--input-color", choices=("auto", *VIDEO_COLOR_PROFILES), default=None,
+        help="Override source color interpretation, default auto uses tags and recorded assumptions",
+    )
+    video.add_argument(
+        "--input-range", choices=("auto", "limited", "full"), default=None,
+        help="Override source signal range, default auto uses tags or a recorded assumption",
+    )
     video.add_argument(
         "--deblock", choices=("off", "weak4", "weak8"), default=None,
         help="Optional weak source deblocking before the Fattal filter",
@@ -285,7 +298,7 @@ def main(argv: list[str] | None = None) -> None:
     video.add_argument("--ffprobe", default="ffprobe", help="ffprobe executable")
     video.add_argument(
         "--progress", action="store_true",
-        help="Show a frame progress bar with processing speed and ETA",
+        help="Show filtered frames and speed, with ETA when the frame count is known",
     )
     compare = commands.add_parser(
         "compare", help="Measure matching RGB pixels without alignment or resizing"
