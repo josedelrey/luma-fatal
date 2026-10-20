@@ -38,9 +38,9 @@ python scripts/check_presets.py --output outputs/preset-check
 Use a new output directory for each run. Frozen results detect numerical and
 encoding changes in the bundled preset cases.
 
-## README comparison
+## README images
 
-Regenerate both filtered results from the bundled input:
+Regenerate the opening comparison from its bundled input:
 
 ```bash
 luma-fatal apply assets/lantern-garden-original.png outputs/readme-comparison-new \
@@ -51,7 +51,16 @@ This command applies both reference variants with shadow softness 6 and saves
 `fattal1.png`, `fattal2.png`, and their `.meta.json` run records. The source and
 published results are 1122×1402 PNGs.
 
-The three README images are kept in `assets/`. Use the ignored `local_inputs/`
-directory for experimental inputs and `outputs/` for generated artifacts.
+Regenerate the image in the CLI example:
+
+```bash
+luma-fatal apply assets/tea-by-the-water-original.png outputs/readme-tea-new.png \
+  --config configs/fattal-1.yaml --filter fattal1 --shadow-softness 6 --output-format png
+```
+
+Its source and filtered result are 1448×1086 PNGs.
+
+README image sources and filtered results are kept in `assets/`. Use the ignored
+`local_inputs/` directory for experimental inputs and `outputs/` for generated artifacts.
 Source distributions include the documentation, presets, tests, and comparison
 assets, while wheels include the runtime and complete license notices.
