@@ -49,9 +49,6 @@ less distinct but added conspicuous grain. Combining cleanup at 0.75 with noise
 at 0.35 produced a more restrained result. The filter amplified fBm-like noise
 into cloudy patterns. Changes were less visible with Fattal 2.
 
-Blocks remained visible in the synthetic comparison. The added texture can
-conceal contours while leaving damaged shading intact.
-
 ## Reproduction
 
 Run these commands from the installed checkout, using a new output directory
@@ -101,5 +98,3 @@ preflight. Video mode requires FFmpeg and ffprobe.
   [Edge-Preserving Decompositions for Multi-Scale Tone and Detail Manipulation](https://doi.org/10.1145/1360612.1360666).
 - Matt Pharr, Wenzel Jakob, and Greg Humphreys (2016).
   [Physically Based Rendering: Noise](https://www.pbr-book.org/3ed-2018/Texture/Noise).
-
-These references describe the filtering and noise constructions used here.

@@ -2,8 +2,6 @@
 
 [Overview](../README.md) · [Configuration](configuration.md) · [Video](video.md)
 
-The caller must supply configuration paths explicitly.
-
 ## Images and arrays
 
 ```python
@@ -43,9 +41,7 @@ record = process_image(
 When `config` is omitted, settings are loaded from `config_path`. If both are
 supplied, `config` controls processing and `config_path` identifies the underlying
 file in the run record. Each call processes one filter, and the output extension
-must match the configured encoding. Existing output files and metadata sidecars
-are never overwritten. If publication fails with a handled error, artifacts
-created by the run are removed.
+must match the configured encoding.
 
 The record includes resolved settings, dimensions, color conversion details,
 dependency versions, and input/output hashes.

@@ -23,7 +23,7 @@ luma-fatal video local_inputs/input.mp4 outputs/stylized.mp4 \
 A preliminary decoding pass checks timing, geometry, and color throughout the
 stream. Filtered frames are converted back to limited-range BT.709 for H.264 MP4
 output, using zscale's display-referred BT.709/BT.1886 interpretation. Processing
-is sequential, with bounded buffering. The output starts at timestamp zero.
+is sequential, with bounded buffering.
 
 ## Input preparation
 
@@ -70,8 +70,6 @@ options do not apply to video.
 Use `--progress` to report filtered frames and speed on stderr, with estimated
 remaining time when the frame count is known before filtering. Rate conversion
 uses an open-ended frame count. Use `--json` to print the complete run record.
-Choose a new output filename for each run, since existing output files and
-metadata sidecars are never overwritten.
 
 The `.meta.json` sidecar records resolved settings, dimensions, frame count,
 color and timing policies, hashes, tool versions, and implementation fingerprints.
@@ -104,7 +102,7 @@ to protect texture and abrupt edges. Guided filtering then corrects RGB and
 luminance in floating point before the Fattal effect. Fade and shadow protection
 continue to use the original source pixels.
 
-Only the mask carries temporal history: local changes release it, strong edges
+The mask carries temporal history: local changes release it, strong edges
 override it, and scene cuts reset it. RGB frames are never averaged over time.
 Cleanup can still change smooth skin and grain you may wish to preserve. The
 sidecar records cleanup time and mask resets.
@@ -118,8 +116,7 @@ sidecar records cleanup time and mask resets.
 
 In multiscale mode, `flat_cleanup` controls the strength of fine correction.
 The bundled multiscale presets use fine strength 0.75, broad strength 1.0, and
-sigma 1.2. They take longer to process and can preserve unwanted contour fragments
-along with fine texture.
+sigma 1.2.
 
 ## Source noise
 
@@ -137,9 +134,4 @@ it is applied.
 The noise presets combine standard cleanup at 0.75 with high-pass noise at
 0.35 RMS. The fBm presets use correlated noise at 0.75 RMS with cleanup disabled.
 The noise field stays fixed in working-frame coordinates, without motion
-compensation. It can conceal contours with grain, but may also introduce cloudy
-patterns that the filter strongly amplifies.
-
-Because filtering has no temporal stabilization, assess cleanup and noise on
-moving footage. The [experiment notes](experiments.md) describe the observed
-tradeoffs.
+compensation.
