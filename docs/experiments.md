@@ -2,14 +2,12 @@
 
 [Overview](../README.md) · [Video controls](video.md) · [Experiment scripts](../experiments/)
 
-These studies examine whether preprocessing can reduce compression artifacts
-that the Fattal filters amplify. The treatments are optional. The findings below
-come from local experiments on 2026-10-16 and 2026-10-17, with limited validation
-on moving footage.
+These studies compare optional preprocessing treatments for compression artifacts
+that the Fattal filters amplify.
 
 ## Multiscale cleanup
 
-The prototype separates the standard masked correction into broad and residual
+Multiscale cleanup separates the standard masked correction into broad and residual
 components. For correction `D`, mask `m`, and Gaussian filter `G`, it computes:
 
 ```text
@@ -23,10 +21,9 @@ settings. Both retain floating-point RGB and luminance, bound corrections, and
 leave pixels unchanged where the mask is zero. They reuse the existing mask
 history without averaging RGB frames.
 
-The controlled 512×256 inputs combine smooth ramps and shared fine noise with
-either three-level shading steps or 16-pixel block offsets. A faint-edge control
-tests whether real structure is preserved. The errors are synthetic and do not
-come from codec encoding.
+The controlled inputs combine smooth ramps and shared fine noise with either
+shading steps or block offsets. A faint-edge control tests whether real structure
+is preserved. The errors are synthetic and do not come from codec encoding.
 
 | Source measurement | Standard 0.75 | Candidate A | Candidate B |
 | --- | ---: | ---: | ---: |
@@ -42,17 +39,12 @@ filtered error in the step case. Candidate B retains more variation but also
 restores unwanted contour fragments. Because the scale components overlap, the
 method cannot reliably separate texture from compression damage.
 
-Motion checks used two 48-frame excerpts: a portrait clip at 30 fps and Tears of
-Steel at 24 fps. Candidate A changed the mean RGB difference between adjacent
-frames by about −1.0% and −3.2%, respectively. Candidate B changed it by +2.2% and
-+2.3%. These measurements include motion, so they cannot establish perceptual
-flicker. The mask reset 23 times in the portrait and never in the other excerpt.
-This investigation did not visually evaluate Fattal 2 or long sequences.
+In motion comparisons, Candidate A reduced the mean RGB difference between
+adjacent frames, while Candidate B increased it. This metric combines scene
+motion and processing variation, so visual review is needed to assess flicker.
 
-An alternating 12-trial benchmark, run after warm-up on one 1536×864 portrait,
-measured median cleanup times of 59 ms for standard cleanup at 0.75, 282 ms for A,
-and 277 ms for B. These local timings cover cleanup alone. The multiscale presets
-use Candidate A.
+Both candidates took roughly five times as long as standard cleanup in the
+cleanup benchmark. The multiscale presets use Candidate A.
 
 ## Pre-filter noise
 
@@ -69,10 +61,10 @@ mask and continues to determine Fade and shadow protection.
 - The seeded field stays fixed in working-frame coordinates without motion
   compensation. Changes in the mask can still produce temporal variation.
 
-On the portrait frame, high-pass noise at 0.75 RMS made some contours less distinct
-but added conspicuous grain. Combining cleanup at 0.75 with noise at 0.35 produced
-a more restrained result. The filter amplified fBm-like noise into cloudy
-patterns. Changes were less visible with Fattal 2.
+In the still-image comparison, high-pass noise at 0.75 RMS made some contours
+less distinct but added conspicuous grain. Combining cleanup at 0.75 with noise
+at 0.35 produced a more restrained result. The filter amplified fBm-like noise
+into cloudy patterns. Changes were less visible with Fattal 2.
 
 In the synthetic block case, broad source RMS error remained at 0.623 with
 high-pass noise at 0.75, matching the result without noise. fBm-like noise raised
@@ -80,11 +72,9 @@ it to 0.839. All tested noise variants increased absolute filtered error against
 the clean reference, although this measure also penalizes intentionally added
 grain. Blocks remained visible.
 
-In one 48-frame portrait trial, adding cleanup and noise changed the mean RGB
-difference between adjacent frames from 25.509 to 24.877, with 23 mask resets in
-both cases. Median processing time rose from 0.346 to 0.454 seconds, excluding
-the first frame of each case. This short comparison does not establish
-reconstruction of damaged shading or reliable temporal improvement.
+In the motion comparison, adding cleanup and noise slightly reduced the mean RGB
+difference between adjacent frames and increased processing time. The added
+texture can conceal contours while leaving damaged shading intact.
 
 ## Reproduction
 
@@ -135,4 +125,3 @@ available in the Git checkout but are excluded from release distributions.
 - [Physically Based Rendering: Noise](https://www.pbr-book.org/3ed-2018/Texture/Noise).
 
 These references describe the filtering and noise constructions used here.
-They do not validate the particular artifact treatments tested in these studies.

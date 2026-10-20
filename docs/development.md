@@ -35,9 +35,8 @@ regenerates expected results. To retain outputs and a JSON report, run:
 python scripts/check_presets.py --output outputs/preset-check
 ```
 
-Use a new output directory for each run. Frozen results establish behavior for
-the cases they cover, without guaranteeing equality across all environments or
-source images.
+Use a new output directory for each run. Frozen results detect numerical and
+encoding changes in the bundled preset cases.
 
 ## README comparison
 

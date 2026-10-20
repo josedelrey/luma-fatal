@@ -4,7 +4,7 @@
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 [![License](https://img.shields.io/badge/License-MIT%20%2B%20BSD--3--Clause-22A559)](LICENSE)
 
-Luma Fatal investigates image and video stylization through gradient-domain
+Luma Fatal provides image and video stylization through gradient-domain
 filtering. It includes two Fattal-inspired filters for adjusting local contrast
 and color, which you can tune through a Python API or the command line.
 
@@ -99,8 +99,7 @@ SIGGRAPH 2002.
 - [Physically Based Rendering: Noise](https://www.pbr-book.org/3ed-2018/Texture/Noise).
 
 These additional references describe the filtering and noise constructions used
-here. They do not validate the particular artifact treatments tested in the
-[experimental studies](docs/experiments.md).
+in the [source treatment studies](docs/experiments.md).
 
 Project-authored code is licensed under MIT. Color conversion includes skcms
 adaptations under BSD-3-Clause. Image credits and complete notices are in

@@ -104,4 +104,4 @@ patterns that the filter strongly amplifies.
 
 Because filtering has no temporal stabilization, assess cleanup and noise on
 moving footage. The [experiment notes](experiments.md) describe the observed
-tradeoffs and limitations.
+tradeoffs.
