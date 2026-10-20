@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, fields, replace
+from fractions import Fraction
 import json
 import math
 from numbers import Real
@@ -52,6 +53,15 @@ _ConfigLoader.add_implicit_resolver(
 
 DEVICE_MAX_EDGES = {"low": 1024, "medium": 1536, "high": 2048}
 DEVICE_INPUT_PIXELS = {"low": 4_000_000, "medium": 8_000_000, "high": 12_000_000}
+
+VIDEO_COLOR_PROFILES = {
+    "bt709": ("bt709", "bt709", "bt709"),
+    "bt601-pal": ("bt470bg", "bt709", "bt470bg"),
+    "bt601-ntsc": ("smpte170m", "smpte170m", "smpte170m"),
+    "srgb": ("bt709", "iec61966-2-1", "bt709"),
+    "bt2020-pq": ("bt2020nc", "smpte2084", "bt2020"),
+    "bt2020-hlg": ("bt2020nc", "arib-std-b67", "bt2020"),
+}
 
 
 def _unique_json_object(pairs):
@@ -307,6 +317,9 @@ class VideoConfig:
     pre_noise_kind: str = "highpass"
     pre_noise_masked: bool = True
     pre_noise_seed: int = 20261017
+    frame_rate: str = "auto"
+    input_color: str = "auto"
+    input_range: str = "auto"
 
     def __post_init__(self):
         if type(self.crf) is not int or not 0 <= self.crf <= 51:
@@ -331,6 +344,15 @@ class VideoConfig:
         if not isinstance(self.pre_noise_masked, bool):
             raise ValueError("video pre_noise_masked must be a boolean")
         _integer("video pre_noise_seed", self.pre_noise_seed, 0)
+        _choice("video input_color", self.input_color, ("auto", *VIDEO_COLOR_PROFILES))
+        _choice("video input_range", self.input_range, ("auto", "limited", "full"))
+        if self.frame_rate != "auto":
+            try:
+                if not isinstance(self.frame_rate, str) or Fraction(self.frame_rate) <= 0:
+                    raise ValueError
+            except (ValueError, ZeroDivisionError) as error:
+                raise ValueError("Video frame_rate must be auto or a positive rate string") from error
+            object.__setattr__(self, "frame_rate", str(Fraction(self.frame_rate)))
 
 
 @dataclass(frozen=True)

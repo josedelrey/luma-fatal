@@ -5,36 +5,73 @@
 ## Requirements and input
 
 Install `ffmpeg` and `ffprobe` so they are available on `PATH`. FFmpeg must include
-`zscale` and `libx264`, as well as `deblock` or `deband` if you enable those source
-treatments. No additional Python packages are required.
+`zscale` and `libx264`, plus `bwdif` for interlaced input, `tonemap` for HDR, and
+`deblock` or `deband` if you enable those source treatments. No additional Python
+packages are required.
 
-Input must contain one progressive, square-pixel video stream at a constant frame
-rate, with explicit BT.709 matrix, transfer, and primaries tags and an explicit
-range tag. Pixels must be opaque 8-bit planar YUV 4:2:0, 4:2:2, or 4:4:4.
-Untagged color, HDR, interlacing, display rotation, and variable frame rate are
-rejected.
+Inputs are decoded and prepared through FFmpeg without an intermediate video
+file. Common RGB and YUV formats, including higher bit depths, are converted to
+full-range sRGB RGB8 for filtering. Input must contain one video stream, excluding
+cover art. Its dimensions, pixel format, color interpretation, and pixel shape
+must remain stable, with strictly increasing presentation timestamps.
 
 ```bash
 luma-fatal video local_inputs/input.mp4 outputs/stylized.mp4 \
   --config configs/fattal-1.yaml --progress
 ```
 
-A preliminary decoding pass checks timing, geometry, and color tags throughout
-the stream. Frames are then converted to full-range sRGB RGB8 for filtering and
-back to limited-range BT.709 for H.264 MP4 output, using zscale's display-referred
-BT.709/BT.1886 interpretation. Processing is sequential, with bounded buffering.
-The output starts at timestamp zero and retains the source's rational frame rate.
+A preliminary decoding pass checks timing, geometry, and color throughout the
+stream. Filtered frames are converted back to limited-range BT.709 for H.264 MP4
+output, using zscale's display-referred BT.709/BT.1886 interpretation. Processing
+is sequential, with bounded buffering. The output starts at timestamp zero.
+
+## Input preparation
+
+- Tagged color spaces and signal ranges are converted using their metadata.
+  Missing tags use sRGB for RGB input, BT.601 for SD YUV input up to 1024×576
+  (PAL above 480 lines, NTSC otherwise), and BT.709 for larger YUV input. Known
+  matrix, primaries, or HDR transfer tags take precedence over size assumptions.
+  Missing range defaults to limited for YUV and full for RGB, grayscale, or
+  full-range JPEG YUV. Assumptions are recorded in the metadata sidecar.
+- PQ and HLG HDR are tone-mapped to SDR using Hable, a fixed 1000-nit signal peak,
+  and 100-nit reference white. HDR output and dynamic HDR metadata are not retained.
+- Interlaced frames are deinterlaced with `bwdif`, keeping one frame per input
+  frame. Non-square pixels are resized to square pixels, with unspecified pixel
+  shape treated as square. Display rotations in multiples of 90 degrees are
+  applied. Reflected, skewed, and perspective display matrices are rejected.
+- Constant-frame-rate input keeps its cadence by default. Variable timing is
+  converted to the source's nominal rate, falling back to its average rate.
+  Frames are duplicated or dropped as needed. Use `--frame-rate` to select a rate
+  explicitly, such as `30` or `30000/1001`.
+
+Use `--input-color` and `--input-range` to override missing or incorrect metadata.
+Color profiles are `bt709`, `bt601-pal`, `bt601-ntsc`, `srgb`, `bt2020-pq`, and
+`bt2020-hlg`. The `srgb` profile uses a BT.709 matrix for YUV storage. RGB storage
+always uses an identity matrix. These options describe the source. For example:
+
+```bash
+luma-fatal video local_inputs/input.mp4 outputs/stylized.mp4 \
+  --config configs/fattal-1.yaml --input-color bt709 --input-range limited \
+  --frame-rate 30000/1001 --progress
+```
+
+The corresponding configuration keys are `video.input_color`,
+`video.input_range`, and `video.frame_rate`. All default to the string `auto`.
+Explicit frame rates must also be strings in configuration files and `VideoConfig`.
+The sidecar records resolved color, geometry, timing, and preparation filters.
 
 ## Output
 
-The output contains only silent video. Audio, subtitles, and other streams are
-discarded. If an output dimension is odd, edge pixels are repeated at the right
-or bottom to accommodate YUV420P. Image ICC, EXIF, and JPEG/PNG export options do
-not apply to video.
+The output contains only silent, opaque video. Audio, subtitles, alpha, and other
+streams are discarded. If an output dimension is odd, edge pixels are repeated
+at the right or bottom to accommodate YUV420P. Image ICC, EXIF, and JPEG/PNG export
+options do not apply to video.
 
-Use `--progress` to report filtered frames, speed, and estimated remaining time on
-stderr, and `--json` to print the complete run record. Choose a new output filename
-for each run, since existing output files and metadata sidecars are never overwritten.
+Use `--progress` to report filtered frames and speed on stderr, with estimated
+remaining time when the frame count is known before filtering. Rate conversion
+uses an open-ended frame count. Use `--json` to print the complete run record.
+Choose a new output filename for each run, since existing output files and
+metadata sidecars are never overwritten.
 
 The `.meta.json` sidecar records resolved settings, dimensions, frame count,
 color and timing policies, hashes, tool versions, and implementation fingerprints.
@@ -47,9 +84,10 @@ Encoded bytes may differ across FFmpeg versions and platforms.
 | `--deblock` | `video.deblock` | `off` | Weak deblocking on 4- or 8-pixel boundaries with `weak4` or `weak8` |
 | `--deband` | `video.deband` | `off` | Gentle decoded-YUV debanding with `gentle` |
 
-Deblocking and debanding run before color conversion and filtering. Deblocking
-can soften detail and may miss artifacts with variable codec block sizes, while
-debanding can alter fine texture and variation between frames.
+Deblocking and debanding run on planar YUV before the final sRGB conversion and
+filtering. RGB sources are converted to YUV first when these treatments are
+enabled. Deblocking can soften detail and may miss artifacts with variable codec
+block sizes, while debanding can alter fine texture and variation between frames.
 
 ## Compressed sources
 

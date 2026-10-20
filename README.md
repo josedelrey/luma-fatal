@@ -5,14 +5,13 @@
 [![License](https://img.shields.io/badge/License-MIT%20%2B%20BSD--3--Clause-22A559)](LICENSE)
 
 Luma Fatal provides image and video stylization through gradient-domain
-filtering. It includes two Fattal-inspired filters for adjusting local contrast
-and color, which you can tune through a Python API or the command line.
+filtering. It includes two filters for adjusting local contrast and color,
+which you can tune through a Python API or the command line.
 
 | <img src="assets/lantern-garden-original.png" alt="Final Fantasy XIV input" width="280" height="350" align="middle"> | <img src="assets/lantern-garden-fattal-1.png" alt="Fattal 1 result" width="280" height="350" align="middle"> | <img src="assets/lantern-garden-fattal-2.png" alt="Fattal 2 result" width="280" height="350" align="middle"> |
 | :---: | :---: | :---: |
 
-Left to right: *Final Fantasy XIV* image, then the same image with
-Fattal 1 and Fattal 2 applied.
+Left to right: original *Final Fantasy XIV* image, Fattal 1 result, and Fattal 2 result.
 
 ## Method
 
@@ -66,11 +65,11 @@ luma-fatal video local_inputs/input.mp4 outputs/stylized.mp4 \
   --config configs/fattal-1.yaml --progress
 ```
 
-Use progressive, 8-bit YUV video with a constant frame rate and explicit BT.709
-color tags. The result is an H.264 MP4 without audio. Each frame is filtered
-separately, which can cause flicker. See the [video guide](docs/video.md) for help
-preparing your input, cleaning up compression artifacts, experimenting with
-noise, and choosing encoding settings.
+Video inputs are prepared automatically, including color conversion, HDR-to-SDR
+tone mapping, and frame-rate normalization. The result is an H.264 MP4 without
+audio. Each frame is filtered separately, which can cause flicker. See the
+[video guide](docs/video.md) for input overrides, compression cleanup, noise,
+and encoding settings.
 
 ## Documentation
 

@@ -76,6 +76,7 @@ images, and arbitrary ICC LUT transforms are outside its supported scope.
 Straight RGBA is available through explicit configuration or the `core` profile,
 as an experimental extension.
 
-The [video adapter](video.md) accepts tagged BT.709 CFR input and produces silent
-H.264 output. It filters each frame independently, with source cleanup retaining
-only mask history. Audio preservation and temporal stabilization are not implemented.
+The [video adapter](video.md) prepares inputs through FFmpeg and produces silent
+SDR H.264 output at a constant frame rate. It filters each frame independently,
+with source cleanup retaining only mask history. Audio preservation and temporal
+stabilization are not implemented.
