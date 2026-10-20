@@ -51,6 +51,8 @@ luma-fatal apply assets/tea-by-the-water-original.png outputs/comparison \
 
 This writes `fattal1.png`, `fattal2.png`, and their `.meta.json` run records to
 `outputs/comparison/`. Replace the input path with your own JPEG or PNG.
+Explicit command-line options, including `--filter`, override the YAML settings
+for that run.
 For one result, pass an output filename and select `--filter fattal1` or `fattal2`.
 
 The [configuration guide](docs/configuration.md) covers presets, tone controls,
