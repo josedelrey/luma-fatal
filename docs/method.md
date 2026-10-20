@@ -36,8 +36,7 @@ colors unchanged at this stage.
 Shadow protection uses the original source brightness. A positive
 `shadow_softness` blends through a smoothstep interval around `shadow_threshold`,
 while zero retains the hard cutoff. Output levels then remap channels, including
-protected shadows, before Fade blends the result with the original RGB. At fade
-100, the effect and its output controls are bypassed.
+protected shadows, before Fade blends the result with the original RGB.
 
 ## Numerical choices
 
@@ -64,7 +63,7 @@ Frozen references check numerical and encoding behavior for the tested cases.
 
 By default, image processing applies EXIF orientation and converts supported RGB
 matrix/TRC ICC profiles to sRGB. Unsupported transforms fall back to Little CMS,
-which can produce different numerical results. This fallback is recorded.
+which can produce different numerical results.
 Reference JPEG export uses quality 100, 4:2:0 chroma subsampling, and no embedded
 profile. In-memory processing retains color interpretation metadata for Pillow
 inputs, while NumPy callers must supply already interpreted RGB pixels.
@@ -78,8 +77,7 @@ as an experimental extension.
 
 The [video adapter](video.md) prepares inputs through FFmpeg and produces silent
 SDR H.264 output at a constant frame rate. It filters each frame independently,
-with source cleanup retaining only mask history. Audio preservation and temporal
-stabilization are not implemented.
+with source cleanup retaining only mask history.
 
 ## References
 
