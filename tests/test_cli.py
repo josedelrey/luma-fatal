@@ -18,7 +18,7 @@ def test_apply_preserves_source_and_records_provenance(tmp_path, capsys):
     source, destination = tmp_path / "input.png", tmp_path / "output.jpg"
     make_input(source)
     original = source.read_bytes()
-    main(["apply", str(source), str(destination), "--filter", "fattal2", "--fade", "0"])
+    main(["apply", str(source), str(destination), "--filter", "fattal2"])
     output = capsys.readouterr().out
     assert "Processed image with Fattal 2" in output
     assert str(destination) in output
@@ -143,3 +143,4 @@ def test_config_output_reports_saved_file(tmp_path, capsys):
         f"Default configuration written to {destination}"
     )
     assert "filter: fattal1" in destination.read_text()
+    assert "  fade: 0\n" in destination.read_text()

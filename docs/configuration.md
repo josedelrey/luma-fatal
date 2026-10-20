@@ -17,17 +17,16 @@ complete configuration, including defaults, run:
 luma-fatal config --output outputs/settings.yaml
 ```
 
-The general defaults use Fattal 1 with `fade: 50`. Reference presets set `fade: 0`
-to apply the full effect.
+The default filter is Fattal 1. Fade defaults to 0, applying the full effect.
 
 ## Presets
 
 The [configs/](../configs/) directory contains all presets, with a matching
-`fattal-2` version for each `fattal-1` family.
+`fattal-2` version for each `fattal-1` family. All presets use `fade: 0`.
 
 | Preset | Purpose |
 | --- | --- |
-| [default.yaml](../configs/default.yaml) | General defaults, fade 50, 8 MP input cap, 1536-pixel working edge |
+| [default.yaml](../configs/default.yaml) | General defaults, 8 MP input cap, 1536-pixel working edge |
 | [high.yaml](../configs/high.yaml) | General defaults with a 12 MP input cap and 2048-pixel working edge |
 | [fattal-1.yaml](../configs/fattal-1.yaml), [fattal-2.yaml](../configs/fattal-2.yaml) | Full reference effect with neutral experimental controls |
 | [fattal-1-compressed.yaml](../configs/fattal-1-compressed.yaml) | Smooth shadows, gentle video debanding, standard cleanup 0.75 |

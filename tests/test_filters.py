@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from luma_fatal import FilterParams, apply_filter, fattal1, fattal2
+from luma_fatal import Config, FilterParams, apply_filter, fattal1, fattal2
 from luma_fatal.core import _pyramid, _normalize
 from luma_fatal.numerics import (
     fast_pow, gradient_scale, luminance_fractional, luminance_u8,
@@ -48,11 +48,12 @@ def test_black_and_low_light_gate(function):
         np.testing.assert_array_equal(function(image, fade=0), image)
 
 
-@pytest.mark.parametrize("function", [fattal1, fattal2])
+@pytest.mark.parametrize("function", [apply_filter, fattal1, fattal2])
 def test_uniform_midgray_zero_range_behavior(function):
     image = np.full((32, 48, 3), 128, np.uint8)
-    assert np.all(function(image, fade=0) == 255)
-    assert np.all(function(image) == 191)
+    assert np.all(function(image, config=Config(parameters=FilterParams(fade=0))) == 255)
+    assert np.all(function(image) == 255)
+    assert np.all(function(image, config=Config(parameters=FilterParams(fade=50))) == 191)
 
 
 def test_rectangular_odd_image_variants_deterministic_and_distinct():
