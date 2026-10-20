@@ -65,11 +65,8 @@ luma-fatal video local_inputs/input.mp4 outputs/stylized.mp4 \
   --config configs/fattal-1.yaml --progress
 ```
 
-Video inputs are prepared automatically, including color conversion, HDR-to-SDR
-tone mapping, and frame-rate normalization. The result is an H.264 MP4 without
-audio. Each frame is filtered separately, which can cause flicker. See the
-[video guide](docs/video.md) for input overrides, compression cleanup, noise,
-and encoding settings.
+Video inputs are prepared automatically and exported as MP4 without audio.
+See the [video guide](docs/video.md) for processing options and encoding settings.
 
 ## Documentation
 
@@ -91,16 +88,13 @@ during testing. You'll need FFmpeg and ffprobe to run the video integration test
 
 ## References and license
 
-Raanan Fattal, Dani Lischinski, and Michael Werman.
-[*Gradient Domain High Dynamic Range Compression*](https://doi.org/10.1145/566570.566573),
-SIGGRAPH 2002.
-
+- [Gradient Domain High Dynamic Range Compression](https://doi.org/10.1145/566570.566573).
 - [Guided Image Filtering](https://people.csail.mit.edu/kaiming/publications/pami12guidedfilter.pdf).
 - [Edge-Preserving Decomposition for Multi-Scale Tone and Detail Manipulation](https://www.microsoft.com/en-us/research/video/edge-preserving-decomposition-for-multi-scale-tone-and-detail-manipulation/).
 - [Physically Based Rendering: Noise](https://www.pbr-book.org/3ed-2018/Texture/Noise).
 
-These additional references describe the filtering and noise constructions used
-in the [source treatment studies](docs/experiments.md).
+See the [source treatment studies](docs/experiments.md) for the filtering and
+noise experiments.
 
 Project-authored code is licensed under MIT. Color conversion includes skcms
 adaptations under BSD-3-Clause. Image credits and complete notices are in
