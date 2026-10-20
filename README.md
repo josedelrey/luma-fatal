@@ -48,7 +48,7 @@ luma-fatal apply assets/tea-by-the-water-original.png outputs/comparison \
   --config configs/fattal-1.yaml --filter both --shadow-softness 6 --output-format png
 ```
 
-![Fattal 1 result](assets/tea-by-the-water-fattal-1.png)
+<a href="assets/tea-by-the-water-fattal-1.png"><img src="assets/tea-by-the-water-fattal-1.png" alt="Fattal 1 result" width="560"></a>
 
 This writes `fattal1.png`, `fattal2.png`, and their `.meta.json` run records to
 `outputs/comparison/`. Replace the input path with your own JPEG or PNG.
