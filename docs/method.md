@@ -85,4 +85,3 @@ stabilization are not implemented.
 
 - Raanan Fattal, Dani Lischinski, and Michael Werman (2002).
   [Gradient Domain High Dynamic Range Compression](https://doi.org/10.1145/566570.566573).
-  *SIGGRAPH 2002*, pp. 249–256.
