@@ -73,34 +73,58 @@ def test_incompatible_import_settings_are_rejected(values):
         ProcessingConfig(**values)
 
 
-def test_import_limit_applies_before_fade_identity_and_can_be_disabled():
-    pixels = np.asarray(Image.open(FIXTURES / "decode-pattern.png"))
+@pytest.mark.parametrize("pillow", [False, True])
+@pytest.mark.parametrize("codec", ["png", "jpg"])
+def test_fade_identity_bypasses_input_and_working_limits(pillow, codec):
+    source = FIXTURES / f"decode-pattern.{codec}"
+    with Image.open(source) as image:
+        pixels = np.asarray(image).copy()
     config = Config(
         parameters=FilterParams(fade=100),
-        processing=ProcessingConfig(max_input_pixels=100),
+        processing=ProcessingConfig(max_input_pixels=100, max_edge=4),
     )
-    result = apply_filter(pixels, config=config)
-    assert result.shape == (8, 11, 3)
+    if pillow:
+        with Image.open(source) as image:
+            result = apply_filter(image, config=config)
+            assert result is not image
+    else:
+        result = apply_filter(pixels, config=config)
+        assert result is not pixels
+    np.testing.assert_array_equal(np.asarray(result), pixels)
+
+
+def test_import_limit_applies_when_filtering_and_can_be_disabled():
+    pixels = np.asarray(Image.open(FIXTURES / "decode-pattern.png"))
+    config = Config(processing=ProcessingConfig(max_input_pixels=100))
+    assert apply_filter(pixels, config=config).shape == (8, 11, 3)
     bypass = replace(config, processing=ProcessingConfig(limit_input_pixels=False))
-    np.testing.assert_array_equal(apply_filter(pixels, config=bypass), pixels)
+    assert apply_filter(pixels, config=bypass).shape == pixels.shape
     assert input_size((4000, 2000), 8_000_000) == (4000, 2000)
     assert input_size((3264, 2448), 8_000_000) == (3264, 2448)
 
 
-def test_cli_records_file_sampling_and_evaluation_uses_prepared_geometry(
-    tmp_path, capsys
+@pytest.mark.parametrize("fade", [0, 100])
+def test_cli_records_sampling_and_evaluation_uses_matching_geometry(
+    tmp_path, capsys, fade
 ):
     inputs = tmp_path / "inputs"
     inputs.mkdir()
     source = inputs / "pattern.png"
     source.write_bytes((FIXTURES / "decode-pattern.png").read_bytes())
     destination = tmp_path / "out.png"
-    options = ["--fade", "100", "--max-input-pixels", "100", "--output-format", "png"]
+    options = ["--fade", str(fade), "--max-input-pixels", "100", "--output-format", "png"]
     main(["apply", str(source), str(destination), *options])
     metadata = json.loads(destination.with_suffix(".meta.json").read_text())
-    assert metadata["input_decode"]["sample"] == 2
-    assert metadata["input_decode"]["decoded_dimensions"] == [12, 9]
-    assert metadata["resolved_processing"]["prepared_dimensions"] == [11, 8]
+    if fade == 100:
+        assert metadata["input_decode"] is None
+        assert metadata["color_conversion"] is None
+        assert metadata["resolved_processing"]["prepared_dimensions"] == [24, 19]
+        with Image.open(destination) as result, Image.open(source) as original:
+            assert result.tobytes() == original.tobytes()
+    else:
+        assert metadata["input_decode"]["sample"] == 2
+        assert metadata["input_decode"]["decoded_dimensions"] == [12, 9]
+        assert metadata["resolved_processing"]["prepared_dimensions"] == [11, 8]
     refs = tmp_path / "refs/fattal_1"
     refs.mkdir(parents=True)
     (refs / "pattern.png").write_bytes(destination.read_bytes())

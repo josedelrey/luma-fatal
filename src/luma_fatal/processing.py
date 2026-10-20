@@ -223,9 +223,9 @@ def process_pixels(
 
     processing = processing or ProcessingConfig()
     numerics = numerics or NumericsConfig()
-    array = limit_input_pixels(array, processing.effective_max_input_pixels)
     if params.fade == 100:
         return array.copy()
+    array = limit_input_pixels(array, processing.effective_max_input_pixels)
     size = (array.shape[1], array.shape[0])
     work_size = working_size(size, processing.effective_max_edge)
     cleanup_options = {} if source_cleanup is None else {"source_cleanup": source_cleanup}

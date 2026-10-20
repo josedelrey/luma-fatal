@@ -323,17 +323,20 @@ def test_cli_cleanup_matches_working_frame_pipeline_and_records_state(
     assert len(inspect(destination, tools)["frames"]) == 5
 
 
-def test_fractional_rate_full_range_and_input_budget(tmp_path, tools):
+@pytest.mark.parametrize("fade,prepared,dimensions", [
+    (0, [23, 17], [24, 18]), (100, [47, 35], [48, 36]),
+])
+def test_fractional_rate_full_range_and_input_budget(tmp_path, tools, fade, prepared, dimensions):
     source = make_clip(tmp_path / "fractional.mkv", tools, rate="30000/1001", color_range="pc")
     config = Config(
-        parameters=FilterParams(fade=100),
+        parameters=FilterParams(fade=fade),
         processing=ProcessingConfig(max_input_pixels=400),
     )
     destination = tmp_path / "fractional.mp4"
     record = process_video(source, destination, config=config, ffmpeg=tools[0], ffprobe=tools[1])
     assert Fraction(record["frame_rate"]) == Fraction(30000, 1001)
-    assert record["prepared_dimensions"] == [23, 17]
-    assert record["dimensions"] == [24, 18]
+    assert record["prepared_dimensions"] == prepared
+    assert record["dimensions"] == dimensions
     expected = hashlib.sha256()
     for frame in reference_rgb(source, tools, 47, 35, color_range="full"):
         processed = apply_filter(frame, config=config)

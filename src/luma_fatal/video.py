@@ -455,7 +455,7 @@ def process_video(
     expected = None if resample else source_count
     prepared = input_size(
         normalized,
-        config.processing.effective_max_input_pixels,
+        config.processing.effective_max_input_pixels if config.parameters.fade < 100 else None,
     )
     width, height = (edge + edge % 2 for edge in prepared)
     tool_versions = {

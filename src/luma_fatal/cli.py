@@ -7,9 +7,11 @@ from dataclasses import asdict, replace
 import json
 from pathlib import Path
 
+import numpy as np
 from PIL import Image
 
-from .pipeline import apply_filter
+from .pipeline import _prepare_pillow_input
+from .processing import limit_input_pixels
 from .configuration import Config, FilterParams, VIDEO_COLOR_PROFILES, resolve_config
 from .images import process_image, STATUS, _write_json, _digest
 from .probes import generate_probes
@@ -154,13 +156,15 @@ def _evaluate(args: argparse.Namespace) -> dict:
             if reference.exists():
                 output = args.output / "comparisons" / label / original.stem
                 with Image.open(original) as source_image:
-                    interpreted = apply_filter(
-                        source_image,
-                        variant,
-                        config=replace(
-                            config, parameters=replace(config.parameters, fade=100)
-                        ),
-                    )
+                    if params.fade < 100:
+                        interpreted = _prepare_pillow_input(source_image, config)
+                        pixels = limit_input_pixels(
+                            np.asarray(interpreted),
+                            config.processing.effective_max_input_pixels,
+                        )
+                        interpreted = Image.fromarray(pixels)
+                    else:
+                        interpreted = source_image.copy()
                 row.update(
                     status="compared",
                     metrics=_comparison(reference, destination, interpreted, output, 8),
