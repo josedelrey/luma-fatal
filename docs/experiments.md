@@ -23,28 +23,11 @@ history without averaging RGB frames.
 
 The controlled inputs combine smooth ramps and shared fine noise with either
 shading steps or block offsets. A faint-edge control tests whether real structure
-is preserved. The errors are synthetic and do not come from codec encoding.
+is preserved.
 
-| Source measurement | Standard 0.75 | Candidate A | Candidate B |
-| --- | ---: | ---: | ---: |
-| Step case, broad error RMS | 0.696 | 0.679 | 0.679 |
-| Block case, broad error RMS | 0.544 | 0.521 | 0.522 |
-| Block case, fine signal gain | 0.239 | 0.230 | 0.435 |
-| Faint-edge case, local error RMS | 0.731 | 0.798 | 0.635 |
-
-Errors are measured in 0–255 luminance units. Fine signal gain is a projection
-onto the known clean high-pass source and does not measure perceptual quality.
-Candidate A modestly reduces broad source error, although it slightly increases
-filtered error in the step case. Candidate B retains more variation but also
-restores unwanted contour fragments. Because the scale components overlap, the
-method cannot reliably separate texture from compression damage.
-
-In motion comparisons, Candidate A reduced the mean RGB difference between
-adjacent frames, while Candidate B increased it. This metric combines scene
-motion and processing variation, so visual review is needed to assess flicker.
-
-Both candidates took roughly five times as long as standard cleanup in the
-cleanup benchmark. The multiscale presets use Candidate A.
+Candidate B retains more variation but also restores unwanted contour fragments.
+Because the scale components overlap, the method cannot reliably separate texture
+from compression damage. The multiscale presets use Candidate A.
 
 ## Pre-filter noise
 
@@ -66,15 +49,8 @@ less distinct but added conspicuous grain. Combining cleanup at 0.75 with noise
 at 0.35 produced a more restrained result. The filter amplified fBm-like noise
 into cloudy patterns. Changes were less visible with Fattal 2.
 
-In the synthetic block case, broad source RMS error remained at 0.623 with
-high-pass noise at 0.75, matching the result without noise. fBm-like noise raised
-it to 0.839. All tested noise variants increased absolute filtered error against
-the clean reference, although this measure also penalizes intentionally added
-grain. Blocks remained visible.
-
-In the motion comparison, adding cleanup and noise slightly reduced the mean RGB
-difference between adjacent frames and increased processing time. The added
-texture can conceal contours while leaving damaged shading intact.
+Blocks remained visible in the synthetic comparison. The added texture can
+conceal contours while leaving damaged shading intact.
 
 ## Reproduction
 
@@ -115,8 +91,7 @@ frame comparisons, review the PNGs before video encoding.
 
 Each excerpt starts with fresh decoder and mask state and runs at working
 resolution, without final enlargement or the production adapter's full-stream
-preflight. Video mode requires FFmpeg and ffprobe. The experiment scripts are
-available in the Git checkout but are excluded from release distributions.
+preflight. Video mode requires FFmpeg and ffprobe.
 
 ## Background
 
