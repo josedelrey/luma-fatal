@@ -26,7 +26,7 @@ See the [method notes](docs/method.md) for processing order and numerical choice
 ## Install
 
 Requires Git, Python 3.11 or later, and [uv](https://docs.astral.sh/uv/).
-CI covers Linux and Windows with Python 3.11.
+CI covers Linux and Windows with Python 3.11 and 3.12.
 
 ```bash
 git clone https://github.com/josedelrey/luma-fatal.git

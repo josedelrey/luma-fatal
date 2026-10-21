@@ -13,7 +13,7 @@ python scripts/check_presets.py
 ```
 
 [CI](../.github/workflows/ci.yml) runs the test suite and preset checks on Ubuntu
-and Windows with Python 3.11. FFmpeg and ffprobe are installed
+and Windows with Python 3.11 and 3.12. FFmpeg and ffprobe are installed
 there, and video integration tests must pass. In local runs, those tests are
 skipped if the tools are unavailable.
 

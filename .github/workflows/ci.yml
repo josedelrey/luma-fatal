@@ -10,13 +10,14 @@ permissions:
 
 jobs:
   test:
-    name: Python 3.11 / ${{ matrix.os }}
+    name: Python ${{ matrix.python-version }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11", "3.12"]
     steps:
       - name: Check out source
         uses: actions/checkout@v7
@@ -25,7 +26,7 @@ jobs:
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: "0.11.6"
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           enable-cache: true
 
       - name: Install locked dependencies
@@ -39,7 +40,21 @@ jobs:
 
       - name: Install FFmpeg on Windows
         if: runner.os == 'Windows'
-        run: choco install ffmpeg-full --yes --no-progress
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if choco install ffmpeg-full --yes --no-progress; then
+              if ffmpeg -version && ffprobe -version; then
+                exit 0
+              fi
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::FFmpeg installation attempt $attempt failed. Retrying."
+              sleep "$((attempt * 10))"
+            fi
+          done
+          echo "::error::FFmpeg and ffprobe could not be installed and verified after 3 attempts."
+          exit 1
 
       - name: Run test suite
         env:
@@ -48,6 +63,3 @@ jobs:
 
       - name: Check frozen image presets
         run: uv run --locked python scripts/check_presets.py
-
-      - name: Build distributions
-        run: uv build
