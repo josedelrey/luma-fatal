@@ -1,9 +1,48 @@
+# Python environments and caches
 .venv/
+venv/
 __pycache__/
+*.py[cod]
+*.nbc
+*.nbi
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+.hypothesis/
+.tox/
+.nox/
+.uv-cache/
+
+# Packaging artifacts
 *.egg-info/
+.eggs/
 build/
 dist/
+
+# Coverage reports
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+!.env.*.example
+/.aws/
+
+# Private inputs and generated outputs
 local_inputs/
 outputs/
+
+# Editor and operating-system files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
