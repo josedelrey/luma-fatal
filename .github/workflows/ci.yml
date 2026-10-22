@@ -34,9 +34,23 @@ jobs:
 
       - name: Install FFmpeg on Linux
         if: runner.os == 'Linux'
+        timeout-minutes: 5
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes ffmpeg
+          # Avoid slow Azure mirror downloads on hosted runners.
+          printf '%s\tpriority:%s\n' \
+            'https://archive.ubuntu.com/ubuntu/' 1 \
+            'https://security.ubuntu.com/ubuntu/' 2 \
+            | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          apt_options=(
+            -o Acquire::Retries=3
+            -o Acquire::http::Timeout=30
+            -o Acquire::https::Timeout=30
+          )
+          sudo apt-get "${apt_options[@]}" update
+          sudo apt-get "${apt_options[@]}" install --yes --no-install-recommends ffmpeg
+          ffmpeg -version
+          ffprobe -version
 
       - name: Install FFmpeg on Windows
         if: runner.os == 'Windows'
