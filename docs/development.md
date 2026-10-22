@@ -8,6 +8,7 @@ Run the development checks:
 
 ```bash
 uv sync --locked --python 3.11
+source .venv/bin/activate
 python -m pytest -q
 python scripts/check_presets.py
 ```

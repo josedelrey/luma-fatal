@@ -23,7 +23,7 @@ def decode_input(
     """Sample original file inputs before color/orientation and final area fit.
 
     PNG uses center selection and floor dimensions. JPEG uses a power-of-two
-    DCT reduction followed by residual center selection when necessary. The
+    DCT reduction followed by residual center selection when necessary.
     Fixed decoder references cover sampling factors 1 through 4. Higher
     factors remain extrapolated. Loaded pixels retain their decoded interpretation.
     """

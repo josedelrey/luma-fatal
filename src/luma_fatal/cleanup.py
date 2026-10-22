@@ -130,7 +130,7 @@ def _compose(rgb, reference_luminance, fields, factor, strength):
 
 
 class SourceCleanup:
-    """Detect flat source regions and gently clean them at working resolution.
+    """Apply guided correction to flat source regions at working resolution.
 
     Strength is in [0, 1]. Detection and guided coefficients use an area-reduced
     image with longest edge at most 384 pixels. History contains only that small
@@ -208,7 +208,7 @@ class SourceCleanup:
 
 
 class MultiscaleSourceCleanup:
-    """Apply stronger broad corrections while retaining more fine source detail.
+    """Split masked source correction into broad and fine components.
 
     The existing full-strength cleanup supplies a bounded correction and soft
     mask. A normalized Gaussian split gives broad and fine strengths without

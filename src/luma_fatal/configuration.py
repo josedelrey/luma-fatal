@@ -192,7 +192,7 @@ class FilterParams:
 
 @dataclass(frozen=True)
 class ProcessingConfig:
-    """Device-class sizing and explicitly supported pixel-composition policies."""
+    """Input and working-size limits, transparency, and pixel blending."""
 
     device_class: str = "medium"
     max_edge: int | None = None
@@ -255,7 +255,7 @@ class ProcessingConfig:
 
 @dataclass(frozen=True)
 class ImageConfig:
-    """Photo interpretation using display color and orientation by default."""
+    """Color conversion, EXIF orientation, and decode sampling."""
 
     color_space: str = "srgb"
     color_backend: str = "matrix_trc"
@@ -357,7 +357,7 @@ class VideoConfig:
 
 @dataclass(frozen=True)
 class Config:
-    """Complete reusable run configuration with strict sections and defaults."""
+    """Validated settings for filtering, input preparation, and export."""
 
     filter: str = "fattal1"
     parameters: FilterParams = field(default_factory=FilterParams)
