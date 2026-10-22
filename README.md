@@ -32,6 +32,7 @@ CI covers Linux and Windows with Python 3.11 and 3.12.
 git clone https://github.com/josedelrey/luma-fatal.git
 cd luma-fatal
 uv sync --locked --python 3.11
+source .venv/bin/activate
 ```
 
 See the [configuration guide](docs/configuration.md) for shell setup and presets.

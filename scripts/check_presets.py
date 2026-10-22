@@ -32,7 +32,7 @@ def digest(path: Path) -> str:
 
 
 def load_contract(path: Path = CONTRACT):
-    """Require complete explicit configuration and frozen semantic values."""
+    """Validate preset settings against the frozen regression contract."""
     contract = json.loads(path.read_text())
     if contract["schema_version"] != 2:
         raise ValueError("Unsupported preset regression schema")

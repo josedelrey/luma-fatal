@@ -9,6 +9,9 @@ the repository root. Activate the virtual environment once per shell session:
 source .venv/bin/activate
 ```
 
+On Windows, use `.venv\Scripts\Activate.ps1` in PowerShell or
+`source .venv/Scripts/activate` in Git Bash.
+
 Use `--config` to load a YAML, TOML, or JSON file. Explicit CLI options take
 precedence over file settings, and unknown settings are rejected. To export a
 complete configuration, including defaults, run:
