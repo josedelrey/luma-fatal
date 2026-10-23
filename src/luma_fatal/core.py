@@ -468,7 +468,7 @@ def _recombine(
 
 def apply_core(
     array: np.ndarray, variant: int, params: FilterParams, numerics: NumericsConfig,
-    *, source_cleanup=None,
+    *, source_cleanup=None, solver=None,
 ) -> np.ndarray:
     """Apply the effect to decoded pixels with no file or resizing policies."""
     result = array.copy()
@@ -516,7 +516,7 @@ def apply_core(
                     numerics.detail_level,
                     numerics.power_mode,
                 )
-                solution = _sor(
+                solution = (_sor if solver is None else solver)(
                     _divergence(log_source, phi),
                     numerics.iterations,
                     numerics.relaxation,

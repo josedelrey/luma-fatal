@@ -56,12 +56,14 @@ to use their defaults.
 
 The [configs/](../configs/) directory contains all presets, with a matching
 `fattal-2` version for each `fattal-1` family.
+All bundled YAML presets use `numerics.shadow_softness: 6`, equivalent to
+`--shadow-softness 6`. API and CLI runs without a config keep the default of `0`.
 
 | Preset | Purpose |
 | --- | --- |
 | [default.yaml](../configs/default.yaml) | General defaults, 8 MP input cap, 1536-pixel working edge |
 | [high.yaml](../configs/high.yaml) | General defaults with a 12 MP input cap and 2048-pixel working edge |
-| [fattal-1.yaml](../configs/fattal-1.yaml), [fattal-2.yaml](../configs/fattal-2.yaml) | Full reference effect with neutral experimental controls |
+| [fattal-1.yaml](../configs/fattal-1.yaml), [fattal-2.yaml](../configs/fattal-2.yaml) | Full reference effect with smooth shadows |
 | [fattal-1-compressed.yaml](../configs/fattal-1-compressed.yaml) | Smooth shadows, gentle video debanding, standard cleanup 0.75 |
 | [fattal-1-compressed-multiscale.yaml](../configs/fattal-1-compressed-multiscale.yaml) | Compressed preset with scale-separated cleanup |
 | [fattal-1-compressed-noise.yaml](../configs/fattal-1-compressed-noise.yaml) | Compressed preset with masked high-pass noise at 0.35 RMS |
@@ -200,7 +202,8 @@ requirements, input preparation, and examples. Output is silent SDR H.264 MP4.
 
 | Key | Default | Accepted values and behavior |
 | --- | --- | --- |
-| `video.encoder` | `libx264` | `libx264` for CPU encoding or `h264_nvenc` for NVIDIA hardware encoding. Bundled YAML presets select `h264_nvenc`. A failed NVENC preflight automatically falls back to `libx264` using `video.crf` and `video.preset`. The actual encoder and fallback diagnostics are recorded in the sidecar's `encoding` section. Filtering remains on the CPU. |
+| `video.encoder` | `libx264` | `libx264` for CPU encoding or `h264_nvenc` for NVIDIA hardware encoding. Bundled YAML presets select `h264_nvenc`. A failed NVENC preflight automatically falls back to `libx264` using `video.crf` and `video.preset`. The actual encoder and fallback diagnostics are recorded in the sidecar's `encoding` section. |
+| `video.filter_backend` | `cpu` | `cpu` retains the reference solver. `auto` benchmarks an optional CUDA solver, including transfers and setup amortization, and uses it only when sufficiently faster and numerically close. Missing GPU support, short or small workloads, insufficient speedup, and runtime GPU failures use the CPU. Bundled YAML presets select `auto`. Independent of `video.encoder`. |
 | `video.crf` | `18` | Integer `0–51`, used only by `libx264`. Lower values generally give higher quality and larger files. `0` requests lossless encoding, but input preparation and pixel-format conversions still apply. |
 | `video.preset` | `medium` | Used only by `libx264`: `ultrafast`, `superfast`, `veryfast`, `faster`, `fast`, `medium`, `slow`, `slower`, or `veryslow`. Slower presets spend more time on compression. |
 | `video.nvenc_cq` | `18` | Integer `0–51`, used only by `h264_nvenc` with quality-targeted variable bitrate and no fixed bitrate target. Lower positive values give higher quality. `0` selects automatic quality, rather than lossless encoding. CQ and CRF values are not equivalent across encoders. |

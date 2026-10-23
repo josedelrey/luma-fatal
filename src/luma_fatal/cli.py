@@ -86,6 +86,7 @@ def _settings(args: argparse.Namespace) -> Config:
             "pre_noise_rms", "pre_noise_kind", "pre_noise_masked", "pre_noise_seed",
             "frame_rate", "input_color", "input_range",
             "encoder", "nvenc_cq", "nvenc_preset",
+            "filter_backend",
         )
         if getattr(args, name, None) is not None
     }
@@ -248,6 +249,10 @@ def main(argv: list[str] | None = None) -> None:
         help="H.264 encoder. YAML presets select h264_nvenc with automatic CPU fallback",
     )
     video.add_argument("--crf", type=int, default=None, help="libx264 quality, 0 to 51")
+    video.add_argument(
+        "--filter-backend", choices=("cpu", "auto"), default=None,
+        help="cpu uses reference filtering. auto benchmarks the optional CUDA solver before selecting it",
+    )
     video.add_argument("--preset", default=None, help="libx264 speed preset")
     video.add_argument(
         "--nvenc-cq", type=int, default=None,

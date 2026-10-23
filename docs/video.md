@@ -86,9 +86,10 @@ luma-fatal video local_inputs/input.mp4 outputs/stylized.mp4 \
   --config configs/fattal-1.yaml --progress
 ```
 
-Decoding, color conversion, and Fattal filtering still run on the CPU. NVENC
-accelerates output compression. The total speed improvement depends on how much
-time encoding takes in your workload.
+NVENC accelerates output compression. The [optional CUDA solver](#gpu-filtering)
+can separately accelerate Fattal filtering. Decoding, color conversion, source
+treatments, resizing, and color reconstruction run on the CPU. The total speed
+improvement depends on where your workload spends its time.
 
 NVENC defaults to target quality `18` and preset `p4`. Use `--nvenc-cq` to select
 quality from `1` to `51`, with lower values giving higher quality. `0` selects
@@ -109,6 +110,46 @@ with the preflight diagnostics, or `null` when no fallback occurred.
 Select `--encoder libx264` to use CPU encoding directly without probing the GPU.
 Runs without a configuration also default to CPU encoding. Failures after
 encoding starts still abort the run and publish no video or sidecar.
+
+## GPU filtering
+
+The experimental CUDA backend accelerates the iterative Poisson solver while
+retaining the existing source preparation, attenuation, color, and resize paths.
+It preserves the reference solver's checkerboard sweeps and serial right-edge
+updates. Results should be very close, with small floating-point differences
+permitted across GPUs and software versions. Image commands retain CPU filtering.
+
+Install the optional GPU dependencies and run a video:
+
+```bash
+uv sync --locked --extra gpu
+uv run --extra gpu luma-fatal video local_inputs/input.mp4 outputs/stylized.mp4 \
+  --config configs/fattal-1-compressed.yaml --progress
+```
+
+The extra supplies CuPy and matched CUDA 12.9 runtime/compiler libraries for
+Linux or Windows with a compatible NVIDIA driver. A separate CUDA Toolkit
+installation is unnecessary. See [CuPy installation](https://docs.cupy.dev/en/stable/install.html).
+CPU processing and NVENC encoding do not require this extra.
+
+All bundled YAML presets use `video.filter_backend: auto`. For each solver
+geometry and iteration count, automatic mode warms both implementations and
+compares two CPU and GPU timings, including GPU transfers. It selects CUDA only
+with at least a 20 percent measured solver improvement, close numerical agreement,
+and enough remaining frames to recover the measured setup cost. Small solver
+fields and known clips shorter than eight frames skip GPU initialization.
+This calibration adds a one-time startup cost. It cannot guarantee a speedup for
+every clip or changing machine load. A GPU failure or three consecutive solver
+calls slower than the calibrated CPU time switches subsequent frames to the CPU.
+
+Use `--filter-backend cpu` for the reference solver, or `--filter-backend auto`
+to enable automatic selection without a preset. Missing optional dependencies
+or unavailable hardware also fall back to the CPU. Selection messages go to
+stderr. The sidecar's `filtering` section records the actual backend, GPU,
+selection reason, solver timings, calibration time, and CPU/CUDA frame counts.
+The counts cover frames that invoke the solver, excluding Fade 100 and black
+frames that bypass it. GPU filtering and NVENC encoding can be selected
+independently.
 
 ## Compressed sources
 

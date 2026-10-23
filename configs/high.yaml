@@ -42,13 +42,14 @@ numerics:
   gradient_threshold: 0.0001
   log_offset: 0.01
   shadow_threshold: 6
-  shadow_softness: 0
+  shadow_softness: 6
   luminance_mode: rounded
   detail_level: 0
   power_mode: approximate
 schema_version: 1
 video:
   encoder: h264_nvenc
+  filter_backend: auto
   nvenc_cq: 18
   nvenc_preset: p4
   crf: 18

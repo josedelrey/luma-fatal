@@ -93,7 +93,7 @@ def apply_filter(
     return result
 
 
-def process_frames(frames, *, config: Config, source_cleanup=None):
+def process_frames(frames, *, config: Config, source_cleanup=None, solver=None):
     """Yield processed decoded RGB8 frames lazily, in input order.
 
     The caller supplies RGB arrays after decoding and color interpretation.
@@ -101,6 +101,8 @@ def process_frames(frames, *, config: Config, source_cleanup=None):
     receives working RGB8 and reference luminance inside the core and returns
     floating RGB and luminance. Its state belongs to the caller. Container
     decoding, timestamps, audio and encoding belong to the video adapter.
+    An optional solver callback accepts the divergence, iteration count and
+    relaxation, and returns the reconstructed scalar field.
     """
     if not isinstance(config, Config):
         raise ValueError("config must be a Config")
@@ -109,20 +111,23 @@ def process_frames(frames, *, config: Config, source_cleanup=None):
     for frame in frames:
         if not isinstance(frame, np.ndarray) or frame.ndim != 3 or frame.shape[2] != 3:
             raise ValueError("frames must be decoded RGB arrays")
-        if source_cleanup is None:
+        if source_cleanup is None and solver is None:
             yield apply_filter(frame, config=config)
         else:
             if frame.dtype != np.uint8 or min(frame.shape[:2]) < 1:
                 raise ValueError("frames must be decoded RGB8 arrays")
+            options = {"source_cleanup": source_cleanup}
+            if solver is not None:
+                options["solver"] = solver
             if config.processing.resize:
                 from .processing import process_pixels
 
                 yield process_pixels(
                     frame, int(config.filter[-1]), config.parameters,
-                    config.processing, config.numerics, source_cleanup=source_cleanup,
+                    config.processing, config.numerics, **options,
                 )
             else:
                 yield apply_core(
                     frame, int(config.filter[-1]), config.parameters, config.numerics,
-                    source_cleanup=source_cleanup,
+                    **options,
                 )

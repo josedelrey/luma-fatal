@@ -324,8 +324,10 @@ class VideoConfig:
     nvenc_cq: int = 18
     nvenc_preset: str = "p4"
     denoise: float = 0.0
+    filter_backend: str = "cpu"
 
     def __post_init__(self):
+        _choice("video filter_backend", self.filter_backend, ("cpu", "auto"))
         _choice("video encoder", self.encoder, ("libx264", "h264_nvenc"))
         _integer("video nvenc_cq", self.nvenc_cq, 0, 51)
         _choice("video nvenc_preset", self.nvenc_preset,
