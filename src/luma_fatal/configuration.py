@@ -320,8 +320,15 @@ class VideoConfig:
     frame_rate: str = "auto"
     input_color: str = "auto"
     input_range: str = "auto"
+    encoder: str = "libx264"
+    nvenc_cq: int = 18
+    nvenc_preset: str = "p4"
 
     def __post_init__(self):
+        _choice("video encoder", self.encoder, ("libx264", "h264_nvenc"))
+        _integer("video nvenc_cq", self.nvenc_cq, 0, 51)
+        _choice("video nvenc_preset", self.nvenc_preset,
+                ("p1", "p2", "p3", "p4", "p5", "p6", "p7"))
         if type(self.crf) is not int or not 0 <= self.crf <= 51:
             raise ValueError("Video crf must be an integer between 0 and 51")
         if self.preset not in (

@@ -234,7 +234,7 @@ def test_config_round_trip_and_checked_in_defaults(tmp_path):
         path = tmp_path / f"config.{suffix}"
         path.write_text(content)
         assert Config.load(path) == config
-    assert Config.load("configs/default.yaml") == Config()
+    assert Config.load("configs/default.yaml") == Config(video=VideoConfig(encoder="h264_nvenc"))
 
 
 def test_api_uses_filter_selection_and_convenience_overrides():

@@ -196,8 +196,11 @@ requirements, input preparation, and examples. Output is silent SDR H.264 MP4.
 
 | Key | Default | Accepted values and behavior |
 | --- | --- | --- |
-| `video.crf` | `18` | Integer `0–51`. H.264 quality. Lower values generally give higher quality and larger files. `0` requests lossless encoding, but input preparation and pixel-format conversions still apply. |
-| `video.preset` | `medium` | `ultrafast`, `superfast`, `veryfast`, `faster`, `fast`, `medium`, `slow`, `slower`, or `veryslow`. Slower presets spend more time on compression. |
+| `video.encoder` | `libx264` | `libx264` for CPU encoding or `h264_nvenc` for NVIDIA hardware encoding. Bundled YAML presets select `h264_nvenc`. A failed NVENC preflight automatically falls back to `libx264` using `video.crf` and `video.preset`. The actual encoder and fallback diagnostics are recorded in the sidecar's `encoding` section. Filtering remains on the CPU. |
+| `video.crf` | `18` | Integer `0–51`, used only by `libx264`. Lower values generally give higher quality and larger files. `0` requests lossless encoding, but input preparation and pixel-format conversions still apply. |
+| `video.preset` | `medium` | Used only by `libx264`: `ultrafast`, `superfast`, `veryfast`, `faster`, `fast`, `medium`, `slow`, `slower`, or `veryslow`. Slower presets spend more time on compression. |
+| `video.nvenc_cq` | `18` | Integer `0–51`, used only by `h264_nvenc` with quality-targeted variable bitrate and no fixed bitrate target. Lower positive values give higher quality. `0` selects automatic quality, rather than lossless encoding. CQ and CRF values are not equivalent across encoders. |
+| `video.nvenc_preset` | `p4` | Used only by `h264_nvenc`: `p1` through `p7`, from fastest to slowest with increasing compression quality. |
 | `video.deblock` | `off` | `off`, `weak4`, or `weak8`. Weak source deblocking on 4- or 8-pixel boundaries before sRGB conversion and filtering. Can soften detail and miss artifacts with other block sizes. |
 | `video.deband` | `off` | `off` or `gentle`. Source debanding before sRGB conversion and filtering. Can reduce tonal steps and alter fine texture or variation between frames. |
 | `video.frame_rate` | `"auto"` | `"auto"` or a positive rate string such as `"30"` or `"30000/1001"`. Selects constant output cadence, duplicating or dropping frames as needed. Automatic rate selection is described under [input preparation](video.md#input-preparation). |

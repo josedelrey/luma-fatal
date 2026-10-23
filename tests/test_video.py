@@ -20,6 +20,244 @@ from luma_fatal.cli import main
 from luma_fatal.video import VideoConfig, _decoded_frames, process_video
 
 
+@pytest.mark.parametrize("cq,preset", [(0, "p1"), (18, "p4"), (51, "p7")])
+def test_nvenc_uses_its_own_rate_control_and_preserves_output_contract(cq, preset):
+    from luma_fatal.video import _encode_command
+
+    command = _encode_command("ffmpeg", "output.mp4", 1920, 1080, Fraction(25), VideoConfig(
+        encoder="h264_nvenc", nvenc_cq=cq, nvenc_preset=preset,
+        crf=0, preset="ultrafast",
+    ))
+    assert command[command.index("-c:v") + 1] == "h264_nvenc"
+    assert command[command.index("-preset") + 1] == preset
+    assert command[command.index("-cq") + 1] == str(cq)
+    assert command[command.index("-rc") + 1] == "vbr"
+    assert command[command.index("-b:v") + 1] == "0"
+    assert "-crf" not in command
+    assert "ultrafast" not in command
+    assert command[command.index("-color_range") + 1] == "tv"
+    assert command[command.index("-color_trc") + 1] == "bt709"
+    assert "format=yuv420p" in command[command.index("-vf") + 1]
+    assert command[-3:] == ["-f", "mp4", "output.mp4"]
+
+
+def test_default_encoder_retains_x264_quality_controls():
+    from luma_fatal.video import _encode_command
+
+    command = _encode_command("ffmpeg", "output.mp4", 1920, 1080, Fraction(25), VideoConfig(
+        crf=0, preset="ultrafast", nvenc_cq=51, nvenc_preset="p7",
+    ))
+    assert command[command.index("-c:v") + 1] == "libx264"
+    assert command[command.index("-crf") + 1] == "0"
+    assert command[command.index("-preset") + 1] == "ultrafast"
+    assert "-cq" not in command
+    assert "-rc" not in command
+    assert "-b:v" not in command
+
+
+@pytest.mark.parametrize("suffix", ["yaml", "toml", "json"])
+def test_nvenc_configuration_round_trip(tmp_path, suffix):
+    config = Config(video=VideoConfig(encoder="h264_nvenc", nvenc_cq=23, nvenc_preset="p6"))
+    content = {
+        "yaml": config.to_yaml(), "toml": config.to_toml(),
+        "json": json.dumps(config.to_dict()),
+    }[suffix]
+    path = tmp_path / f"nvenc.{suffix}"
+    path.write_text(content)
+    assert Config.load(path) == config
+
+
+def test_cli_overrides_nvenc_configuration(tmp_path, monkeypatch, capsys):
+    import luma_fatal.cli as cli
+
+    path = tmp_path / "nvenc.yaml"
+    path.write_text(Config(video=VideoConfig(
+        encoder="libx264", nvenc_cq=28, nvenc_preset="p7",
+    )).to_yaml())
+
+    def observe(source, destination, *, config, **kwargs):
+        return {"video_configuration": config.to_dict()["video"]}
+
+    monkeypatch.setattr(cli, "process_video", observe)
+    main([
+        "video", "source.mp4", "output.mp4", "--config", str(path),
+        "--encoder", "h264_nvenc", "--nvenc-cq", "21", "--nvenc-preset", "p3", "--json",
+    ])
+    settings = json.loads(capsys.readouterr().out)["video_configuration"]
+    assert settings["encoder"] == "h264_nvenc"
+    assert settings["nvenc_cq"] == 21
+    assert settings["nvenc_preset"] == "p3"
+    assert settings["crf"] == 18
+    assert settings["preset"] == "medium"
+
+
+@pytest.mark.parametrize("diagnostic", [
+    "Unknown encoder 'h264_nvenc'", "Cannot load libcuda", "No capable devices found",
+])
+@pytest.mark.parametrize("broken_pipe", [False, True])
+def test_nvenc_preflight_failure_falls_back_to_cpu(
+    tmp_path, tools, monkeypatch, capsys, diagnostic, broken_pipe,
+):
+    from contextlib import contextmanager
+    import luma_fatal.video as video
+
+    source = make_clip(tmp_path / "source.mkv", tools)
+    original = video._process
+    commands = []
+
+    @contextmanager
+    def unavailable(command, **kwargs):
+        if "-c:v" in command:
+            commands.append(command)
+        if "h264_nvenc" not in command:
+            with original(command, **kwargs) as result:
+                yield result
+            return
+
+        class FailedInput(io.BytesIO):
+            def write(self, data):
+                if broken_pipe:
+                    raise BrokenPipeError("Encoder failed during initialization")
+                return super().write(data)
+
+        class FailedEncoder:
+            stdin = FailedInput()
+
+            def wait(self):
+                return 1
+
+        yield FailedEncoder(), io.BytesIO(diagnostic.encode())
+
+    monkeypatch.setattr(video, "_process", unavailable)
+    config = Config(
+        parameters=FilterParams(fade=100),
+        video=VideoConfig(encoder="h264_nvenc", crf=23, preset="ultrafast"),
+    )
+    destination = tmp_path / "out" / "result.mp4"
+    record = process_video(source, destination, config=config,
+                           ffmpeg=tools[0], ffprobe=tools[1])
+    assert "Falling back to CPU encoding (libx264)" in capsys.readouterr().err
+    assert record["encoding"]["requested_encoder"] == "h264_nvenc"
+    assert record["encoding"]["encoder"] == "libx264"
+    assert diagnostic in record["encoding"]["fallback_reason"]
+    assert record["configuration"]["video"]["encoder"] == "h264_nvenc"
+    assert record["video_configuration"]["encoder"] == "h264_nvenc"
+    assert config.video.encoder == "h264_nvenc"
+    assert len(commands) == 2
+    assert commands[0][commands[0].index("-s:v") + 1] == "48x36"
+    cpu_command = commands[1]
+    assert cpu_command[cpu_command.index("-c:v") + 1] == "libx264"
+    assert cpu_command[cpu_command.index("-crf") + 1] == "23"
+    assert cpu_command[cpu_command.index("-preset") + 1] == "ultrafast"
+    expected = hashlib.sha256()
+    for frame in reference_rgb(source, tools, 47, 35):
+        expected.update(np.pad(frame, ((0, 1), (0, 1), (0, 0)), mode="edge").tobytes())
+    assert record["processed_rgb_sha256"] == expected.hexdigest()
+    assert record["frame_count"] == 5
+    assert len(inspect(destination, tools)["frames"]) == 5
+    assert json.loads(destination.with_suffix(".meta.json").read_text()) == record
+    assert not list(destination.parent.glob(".luma-fatal-*"))
+
+
+@pytest.mark.parametrize("force_cpu", [False, True])
+def test_cli_yaml_encoder_fallback_and_cpu_override(tmp_path, tools, monkeypatch, capsys, force_cpu):
+    import luma_fatal.video as video
+
+    source = make_clip(tmp_path / "source.mkv", tools)
+    preset = Path(__file__).resolve().parents[1] / "configs" / "fattal-1.yaml"
+    config = tmp_path / "inherited.yaml"
+    config.write_text(f"extends: {preset.as_posix()}\nparameters:\n  fade: 100\n")
+
+    def unavailable(*args):
+        if force_cpu:
+            pytest.fail("Explicit CPU encoding must not probe NVIDIA hardware")
+        raise ValueError("synthetic unavailable GPU")
+
+    monkeypatch.setattr(video, "_validate_nvenc", unavailable)
+    destination = tmp_path / "result.mp4"
+    arguments = [
+        "video", str(source), str(destination), "--config", str(config),
+        "--ffmpeg", tools[0], "--ffprobe", tools[1], "--json",
+    ]
+    if force_cpu:
+        arguments += ["--encoder", "libx264"]
+    main(arguments)
+    captured = capsys.readouterr()
+    record = json.loads(captured.out)
+    assert record["encoding"] == {
+        "requested_encoder": "libx264" if force_cpu else "h264_nvenc",
+        "encoder": "libx264",
+        "fallback_reason": None if force_cpu else "synthetic unavailable GPU",
+    }
+    assert ("Falling back" in captured.err) is (not force_cpu)
+    assert json.loads(destination.with_suffix(".meta.json").read_text()) == record
+
+
+def test_cpu_encoding_failure_after_nvenc_fallback_publishes_no_output(tmp_path, tools, monkeypatch):
+    import luma_fatal.video as video
+
+    source = make_clip(tmp_path / "source.mkv", tools)
+    original = video._encode_command
+
+    def unavailable(*args):
+        raise ValueError("synthetic unavailable GPU")
+
+    def unavailable_cpu(*args):
+        command = original(*args)
+        command[command.index("libx264")] = "luma-fatal-nonexistent-codec"
+        return command
+
+    monkeypatch.setattr(video, "_validate_nvenc", unavailable)
+    monkeypatch.setattr(video, "_encode_command", unavailable_cpu)
+    destination = tmp_path / "result.mp4"
+    with pytest.raises(ValueError, match="Video encoding failed"):
+        process_video(source, destination, video_config=VideoConfig(encoder="h264_nvenc"),
+                      ffmpeg=tools[0], ffprobe=tools[1])
+    assert not destination.exists()
+    assert not destination.with_suffix(".meta.json").exists()
+    assert not list(tmp_path.glob(".luma-fatal-*"))
+
+
+def test_nvenc_hardware_output_matches_cpu_filtering(tmp_path, tools):
+    from luma_fatal.video import _validate_nvenc
+
+    settings = VideoConfig(encoder="h264_nvenc", nvenc_cq=23, nvenc_preset="p2")
+    try:
+        _validate_nvenc(tools[0], 160, 128, Fraction(25), settings)
+    except ValueError as error:
+        if os.environ.get("LUMA_FATAL_REQUIRE_NVENC_TESTS") == "1":
+            pytest.fail(str(error))
+        pytest.skip(str(error))
+    source = make_clip(tmp_path / "source.mkv", tools, width=159, height=127, audio=True)
+    config = Config(processing=ProcessingConfig(max_edge=24), numerics=NumericsConfig(iterations=3))
+    cpu = process_video(source, tmp_path / "cpu.mp4", config=config,
+                        ffmpeg=tools[0], ffprobe=tools[1])
+    destination = tmp_path / "gpu.mp4"
+    gpu = process_video(source, destination, config=config, video_config=settings,
+                        ffmpeg=tools[0], ffprobe=tools[1])
+    assert gpu["processed_rgb_sha256"] == cpu["processed_rgb_sha256"]
+    assert gpu["video_configuration"]["encoder"] == "h264_nvenc"
+    assert gpu["video_configuration"]["nvenc_cq"] == 23
+    assert gpu["video_configuration"]["nvenc_preset"] == "p2"
+    assert gpu["encoding"] == {
+        "requested_encoder": "h264_nvenc", "encoder": "h264_nvenc", "fallback_reason": None,
+    }
+    assert json.loads(destination.with_suffix(".meta.json").read_text()) == gpu
+    output = inspect(destination, tools)
+    stream, = output["streams"]
+    assert stream["codec_name"] == "h264"
+    assert stream["pix_fmt"] == "yuv420p"
+    assert stream["color_range"] == "tv"
+    assert all(stream[key] == "bt709" for key in (
+        "color_transfer", "color_primaries", "color_space",
+    ))
+    assert (stream["width"], stream["height"]) == (160, 128)
+    assert len(output["frames"]) == 5
+    times = [int(frame["pts"]) * Fraction(stream["time_base"]) for frame in output["frames"]]
+    assert times == [Fraction(i, 25) for i in range(5)]
+    assert not list(tmp_path.glob(".luma-fatal-*"))
+
+
 @pytest.fixture(scope="module")
 def tools():
     paths = [shutil.which(name) for name in ("ffmpeg", "ffprobe")]
@@ -126,6 +364,9 @@ def reference_rgb(path, tools, width, height, color_range="limited", deblock="of
     {"frame_rate": "-25"}, {"frame_rate": "1/0"}, {"frame_rate": "nan"},
     {"frame_rate": "25,fps=30"}, {"input_color": "unknown"},
     {"input_range": "tv"},
+    {"encoder": "auto"}, {"encoder": True},
+    {"nvenc_cq": True}, {"nvenc_cq": -1}, {"nvenc_cq": 52}, {"nvenc_cq": 18.5},
+    {"nvenc_preset": "medium"}, {"nvenc_preset": "p8"}, {"nvenc_preset": True},
 ])
 def test_video_settings_reject_invalid_values(kwargs):
     with pytest.raises(ValueError):
@@ -373,6 +614,7 @@ def test_cli_loads_config_and_applies_overrides(tmp_path, tools, capsys):
     assert record["configuration"]["parameters"]["fade"] == 100
     assert record["configuration"]["numerics"]["shadow_softness"] == 6
     assert record["video_configuration"] == {
+        "encoder": "libx264", "nvenc_cq": 18, "nvenc_preset": "p4",
         "crf": 23, "preset": "ultrafast", "deblock": "weak8", "deband": "off",
         "flat_cleanup": 0.0,
         "flat_cleanup_mode": "standard", "flat_cleanup_coarse_strength": 1.0,

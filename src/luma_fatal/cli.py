@@ -85,6 +85,7 @@ def _settings(args: argparse.Namespace) -> Config:
             "flat_cleanup_mode", "flat_cleanup_coarse_strength", "flat_cleanup_sigma",
             "pre_noise_rms", "pre_noise_kind", "pre_noise_masked", "pre_noise_seed",
             "frame_rate", "input_color", "input_range",
+            "encoder", "nvenc_cq", "nvenc_preset",
         )
         if getattr(args, name, None) is not None
     }
@@ -242,8 +243,20 @@ def main(argv: list[str] | None = None) -> None:
     video.add_argument("input", type=Path)
     video.add_argument("output", type=Path)
     video.add_argument("--filter", choices=("fattal1", "fattal2"), default=None)
-    video.add_argument("--crf", type=int, default=None)
-    video.add_argument("--preset", default=None, help="H.264 encoder speed preset")
+    video.add_argument(
+        "--encoder", choices=("libx264", "h264_nvenc"), default=None,
+        help="H.264 encoder. YAML presets select h264_nvenc with automatic CPU fallback",
+    )
+    video.add_argument("--crf", type=int, default=None, help="libx264 quality, 0 to 51")
+    video.add_argument("--preset", default=None, help="libx264 speed preset")
+    video.add_argument(
+        "--nvenc-cq", type=int, default=None,
+        help="NVENC target quality, 1 to 51, lower is better. 0 selects automatic quality",
+    )
+    video.add_argument(
+        "--nvenc-preset", choices=("p1", "p2", "p3", "p4", "p5", "p6", "p7"),
+        default=None, help="NVENC speed preset, p1 fastest to p7 slowest, default p4",
+    )
     video.add_argument(
         "--frame-rate", default=None,
         help="Output fps, such as 30 or 30000/1001, or auto to use the source rate",
@@ -297,7 +310,7 @@ def main(argv: list[str] | None = None) -> None:
         help="Nonnegative seed for the fixed source noise field",
     )
     video.add_argument(
-        "--ffmpeg", default="ffmpeg", help="FFmpeg executable with zscale and libx264"
+        "--ffmpeg", default="ffmpeg", help="FFmpeg executable with zscale and the selected encoder"
     )
     video.add_argument("--ffprobe", default="ffprobe", help="ffprobe executable")
     video.add_argument(

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from fractions import Fraction
 import hashlib
 from importlib.metadata import version
@@ -381,6 +381,42 @@ def _decoded_frames(pipe, width, height):
         yield np.frombuffer(data, np.uint8).reshape(height, width, 3)
 
 
+def _encoder_options(settings):
+    if settings.encoder == "h264_nvenc":
+        return [
+            "-c:v", "h264_nvenc", "-preset", settings.nvenc_preset,
+            "-rc", "vbr", "-cq", str(settings.nvenc_cq), "-b:v", "0",
+        ]
+    return ["-c:v", "libx264", "-crf", str(settings.crf), "-preset", settings.preset]
+
+
+def _validate_nvenc(executable, width, height, rate, settings):
+    """Test the requested hardware encoder before processing effect frames."""
+    command = [
+        str(executable), "-v", "error", "-xerror", "-nostdin",
+        "-f", "rawvideo", "-pix_fmt", "yuv420p", "-s:v", f"{width}x{height}",
+        "-r", str(rate), "-i", "pipe:0", "-frames:v", "1",
+        *_encoder_options(settings), "-f", "null", "-",
+    ]
+    try:
+        with _process(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL) as (p, log):
+            try:
+                p.stdin.write(bytes(width * height * 3 // 2))
+                p.stdin.close()
+            except OSError:
+                # An encoder that cannot initialize may close stdin immediately.
+                _check(p, log, "NVENC preflight")
+                raise
+            _check(p, log, "NVENC preflight")
+    except (ValueError, OSError) as error:
+        raise ValueError(
+            "NVIDIA H.264 encoding is unavailable for these settings. "
+            "Check that FFmpeg includes h264_nvenc and that a compatible NVIDIA GPU "
+            "and driver are available, or select --encoder libx264. "
+            f"{error}"
+        ) from error
+
+
 def _encode_command(executable, path, width, height, rate, settings):
     return [
         str(executable), "-v", "error", "-xerror", "-nostdin", "-n",
@@ -391,7 +427,7 @@ def _encode_command(executable, path, width, height, rate, settings):
             "primariesin=709:rangein=full:matrix=709:transfer=709:"
             "primaries=709:range=limited,format=yuv420p,setsar=1"
         ),
-        "-c:v", "libx264", "-crf", str(settings.crf), "-preset", settings.preset,
+        *_encoder_options(settings),
         "-pix_fmt", "yuv420p", "-color_primaries", "bt709", "-color_trc", "bt709",
         "-colorspace", "bt709", "-color_range", "tv", "-fps_mode", "passthrough",
         "-movflags", "+faststart", "-f", "mp4", str(path),
@@ -411,16 +447,18 @@ def process_video(
 ) -> dict:
     """Prepare and filter video into silent, square-pixel SDR H.264 MP4.
 
-    FFmpeg must provide zscale and libx264, plus bwdif for interlaced input,
-    tonemap for HDR, and optional source filters. A streaming preflight validates
-    timestamps and stable source geometry/color. Missing color tags use recorded
-    assumptions. HDR uses Hable tone mapping with a 1000-nit peak and 100-nit white.
+    FFmpeg must provide zscale and libx264, plus h264_nvenc for GPU encoding,
+    bwdif for interlaced input, tonemap for HDR, and optional source filters. A streaming
+    preflight validates timestamps and stable source geometry/color. Missing color
+    tags use recorded assumptions. HDR uses Hable tone mapping with a 1000-nit peak
+    and 100-nit white.
     Variable timing is normalized to the nominal rate, unless frame_rate overrides
     it. Progressive CFR input retains its cadence by default.
     Optional weak deblocking and gentle debanding run on decoded YUV before
     RGB conversion.
     Image preparation/export settings do not apply to video. Frames enter the
     filter as full-range sRGB RGB8. Odd output edges are padded by replication.
+    Unavailable NVENC encoding falls back to libx264 before effect processing.
     Existing destinations are refused. Failed runs publish no output or sidecar.
     """
     start = time.perf_counter()
@@ -458,6 +496,17 @@ def process_video(
         config.processing.effective_max_input_pixels if config.parameters.fade < 100 else None,
     )
     width, height = (edge + edge % 2 for edge in prepared)
+    encoding_settings, fallback_reason = settings, None
+    if settings.encoder == "h264_nvenc":
+        try:
+            _validate_nvenc(ffmpeg, width, height, rate, settings)
+        except ValueError as error:
+            fallback_reason = str(error)
+            encoding_settings = replace(settings, encoder="libx264")
+            print(
+                "NVIDIA encoding unavailable. Falling back to CPU encoding (libx264).",
+                file=sys.stderr,
+            )
     tool_versions = {
         name: _capture([str(executable), "-version"]).splitlines()[0]
         for name, executable in (("ffmpeg", ffmpeg), ("ffprobe", ffprobe))
@@ -492,7 +541,7 @@ def process_video(
             color=color, dimensions=normalized, rotation=rotation, interlaced=interlaced,
             rate=rate if resample else None,
         )
-        encode = _encode_command(ffmpeg, temporary, width, height, rate, settings)
+        encode = _encode_command(ffmpeg, temporary, width, height, rate, encoding_settings)
         with _process(
             decode, stdout=subprocess.PIPE, stdin=subprocess.DEVNULL
         ) as (decoder, decode_log):
@@ -544,6 +593,11 @@ def process_video(
             filter=config.filter,
             configuration=config.to_dict(),
             video_configuration=asdict(settings),
+            encoding=dict(
+                requested_encoder=settings.encoder,
+                encoder=encoding_settings.encoder,
+                fallback_reason=fallback_reason,
+            ),
             source_dimensions=[stream["width"], stream["height"]],
             normalized_dimensions=list(normalized),
             prepared_dimensions=list(prepared),

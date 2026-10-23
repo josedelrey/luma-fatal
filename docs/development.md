@@ -18,6 +18,12 @@ and Windows with Python 3.11 and 3.12. FFmpeg and ffprobe are installed
 there, and video integration tests must pass. In local runs, those tests are
 skipped if the tools are unavailable.
 
+NVENC option validation, automatic CPU fallback, and failure cleanup are tested
+without NVIDIA hardware.
+The hardware integration test runs when NVENC can initialize, otherwise it is
+skipped. On an NVIDIA machine, set `LUMA_FATAL_REQUIRE_NVENC_TESTS=1` to require
+that test to pass, and run `python -m pytest -q tests/test_video.py -k nvenc`.
+
 Regression tests use bundled [fixtures](../tests/fixtures/) or deterministically
 generated inputs. They cover scalar float32 bit patterns, filter outputs,
 interpolation, geometry, decoding, and color conversion. Video tests use generated
