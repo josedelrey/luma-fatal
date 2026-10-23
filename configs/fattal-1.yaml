@@ -48,6 +48,9 @@ numerics:
   detail_level: 0
   power_mode: "approximate"
 video:
+  encoder: h264_nvenc
+  nvenc_cq: 18
+  nvenc_preset: p4
   crf: 18
   preset: medium
   deblock: off

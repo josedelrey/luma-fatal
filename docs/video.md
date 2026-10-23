@@ -5,9 +5,9 @@
 ## Requirements and input
 
 Install `ffmpeg` and `ffprobe` so they are available on `PATH`. FFmpeg must include
-`zscale` and `libx264`, plus `bwdif` for interlaced input, `tonemap` for HDR, and
-`deblock` or `deband` if you enable those source treatments. No additional Python
-packages are required.
+`zscale` and `libx264` for CPU encoding and fallback, plus `bwdif` for
+interlaced input, `tonemap` for HDR, and `deblock` or `deband` if you enable those
+source treatments. No additional Python packages are required.
 
 Inputs are decoded and prepared through FFmpeg without an intermediate video
 file. Common RGB and YUV formats, including higher bit depths, are converted to
@@ -73,6 +73,42 @@ Encoded bytes may differ across FFmpeg versions and platforms.
 
 Encoder controls are listed in the
 [configuration reference](configuration.md#encoding-and-source-preparation).
+
+## NVIDIA hardware encoding
+
+The bundled YAML configurations request NVIDIA NVENC encoding by default.
+Presets that extend another YAML inherit that selection. Using NVENC requires
+an NVENC-capable NVIDIA GPU, a working NVIDIA driver, and an FFmpeg build that
+includes `h264_nvenc`. No additional Python packages are required.
+
+```bash
+luma-fatal video local_inputs/input.mp4 outputs/stylized.mp4 \
+  --config configs/fattal-1.yaml --progress
+```
+
+Decoding, color conversion, and Fattal filtering still run on the CPU. NVENC
+accelerates output compression. The total speed improvement depends on how much
+time encoding takes in your workload.
+
+NVENC defaults to target quality `18` and preset `p4`. Use `--nvenc-cq` to select
+quality from `1` to `51`, with lower values giving higher quality. `0` selects
+automatic quality and does not request lossless encoding. Use `--nvenc-preset`
+from `p1` (fastest) to `p7` (slowest, best compression quality). `--crf` and
+`--preset` control `libx264`, including automatic CPU fallback. CQ and CRF values
+do not imply equivalent quality or file size across encoders. See
+[FFmpeg's NVENC documentation](https://www.ffmpeg.org/ffmpeg-codecs.html#NVENC-encoders).
+
+The same settings are available as `video.encoder`, `video.nvenc_cq`, and
+`video.nvenc_preset` in YAML, TOML, or JSON. A one-frame hardware encoding check
+runs before filtering. If it fails, the run reports the switch on stderr and
+automatically uses `libx264` with `video.crf` and `video.preset`.
+The metadata sidecar retains the requested `video_configuration`. Its `encoding`
+section records `requested_encoder`, the actual `encoder`, and `fallback_reason`
+with the preflight diagnostics, or `null` when no fallback occurred.
+
+Select `--encoder libx264` to use CPU encoding directly without probing the GPU.
+Runs without a configuration also default to CPU encoding. Failures after
+encoding starts still abort the run and publish no video or sidecar.
 
 ## Compressed sources
 
