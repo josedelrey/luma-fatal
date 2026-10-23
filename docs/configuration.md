@@ -67,6 +67,10 @@ The [configs/](../configs/) directory contains all presets, with a matching
 | [fattal-1-compressed-noise.yaml](../configs/fattal-1-compressed-noise.yaml) | Denoising with masked high-pass noise added afterward at 0.35 RMS |
 | [fattal-1-compressed-fbm.yaml](../configs/fattal-1-compressed-fbm.yaml) | Denoising with masked fBm-like noise added afterward at 0.75 RMS, flat cleanup disabled |
 
+All `compressed` presets process frames at full resolution with
+`processing.resize: false`. They disable both the input-area cap and
+working-resolution reduction.
+
 Use `extends` to inherit from a parent configuration and override selected settings.
 Parent paths are relative to the child file. Named sections merge by setting,
 and the child can add sections absent from its parent. For example, save this

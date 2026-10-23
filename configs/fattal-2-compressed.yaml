@@ -15,10 +15,10 @@ parameters:
   vibrance: 0
 processing:
   device_class: "medium"
-  max_edge: 1536
-  max_input_pixels: 8000000
-  limit_input_pixels: true
-  resize: true
+  max_edge: null
+  max_input_pixels: null
+  limit_input_pixels: false
+  resize: false
   transparency: "reject"
   blend_mode: "normal"
   working_resampler: "nearest"
