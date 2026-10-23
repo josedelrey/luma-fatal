@@ -1,4 +1,4 @@
-# Fattal 1 with inherited denoising, standard cleanup 0.75 and masked noise 0.35.
+# Fattal 1 with standard cleanup 0.75 and masked noise 0.35.
 extends: fattal-1-compressed.yaml
 video:
   flat_cleanup: 0.75

@@ -62,10 +62,10 @@ The [configs/](../configs/) directory contains all presets, with a matching
 | [default.yaml](../configs/default.yaml) | General defaults, 8 MP input cap, 1536-pixel working edge |
 | [high.yaml](../configs/high.yaml) | General defaults with a 12 MP input cap and 2048-pixel working edge |
 | [fattal-1.yaml](../configs/fattal-1.yaml), [fattal-2.yaml](../configs/fattal-2.yaml) | Full reference effect with neutral experimental controls |
-| [fattal-1-compressed.yaml](../configs/fattal-1-compressed.yaml) | Adaptive denoising, smooth shadows, gentle video debanding, standard cleanup 0.75 |
-| [fattal-1-compressed-multiscale.yaml](../configs/fattal-1-compressed-multiscale.yaml) | Denoising with scale-separated cleanup |
-| [fattal-1-compressed-noise.yaml](../configs/fattal-1-compressed-noise.yaml) | Denoising with masked high-pass noise added afterward at 0.35 RMS |
-| [fattal-1-compressed-fbm.yaml](../configs/fattal-1-compressed-fbm.yaml) | Denoising with masked fBm-like noise added afterward at 0.75 RMS, flat cleanup disabled |
+| [fattal-1-compressed.yaml](../configs/fattal-1-compressed.yaml) | Smooth shadows, gentle video debanding, standard cleanup 0.75 |
+| [fattal-1-compressed-multiscale.yaml](../configs/fattal-1-compressed-multiscale.yaml) | Compressed preset with scale-separated cleanup |
+| [fattal-1-compressed-noise.yaml](../configs/fattal-1-compressed-noise.yaml) | Compressed preset with masked high-pass noise at 0.35 RMS |
+| [fattal-1-compressed-fbm.yaml](../configs/fattal-1-compressed-fbm.yaml) | Masked fBm-like noise at 0.75 RMS, flat cleanup disabled |
 
 All `compressed` presets process frames at full resolution with
 `processing.resize: false`. They disable both the input-area cap and
@@ -220,15 +220,16 @@ to local signal energy. Floating-point RGB and luminance avoid a new RGB8
 quantization step. Frames are independent, with no temporal color averaging.
 Original pixels still control shadow protection and Fade.
 
-All `compressed` presets enable denoising at `1.0`, including their inherited
-multiscale, noise, and fBm variations. Other presets and API defaults leave it
-disabled. Very fine texture near the estimated noise floor may soften. Reduce
-the strength to retain more grain and detail. The existing noise/fBm variations
-retain their intentional noise, which is added after denoising.
+All presets and API defaults leave denoising disabled at `0.0`, including the
+compressed multiscale, noise, and fBm variations. Enable it explicitly with
+`video.denoise` or `--denoise`, for example `--denoise 0.5`. Very fine texture
+near the estimated noise floor may soften. Reduce the strength to retain more
+grain and detail. The existing noise/fBm variations retain their intentional
+noise, which is added after denoising when enabled.
 
 | Key | Default | Accepted values and behavior |
 | --- | --- | --- |
-| `video.denoise` | `0.0` | `0–1`. Adaptive spatial denoising strength. `0` bypasses denoising. Compressed presets select `1.0`. |
+| `video.denoise` | `0.0` | `0–1`. Adaptive spatial denoising strength. `0` bypasses denoising in all presets by default. |
 
 ### Smooth-area cleanup
 

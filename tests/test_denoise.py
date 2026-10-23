@@ -176,8 +176,8 @@ def test_denoise_configuration_roundtrips(tmp_path, suffix):
 @pytest.mark.parametrize("path", sorted(
     (Path(__file__).resolve().parents[1] / "configs").glob("*.yaml")
 ), ids=lambda p: p.stem)
-def test_only_compressed_presets_enable_denoising_by_default(path):
-    assert Config.load(path).video.denoise == (1.0 if "compressed" in path.stem else 0.0)
+def test_all_presets_leave_denoising_disabled_by_default(path):
+    assert Config.load(path).video.denoise == 0.0
 
 
 @pytest.mark.parametrize("variant", [1, 2])

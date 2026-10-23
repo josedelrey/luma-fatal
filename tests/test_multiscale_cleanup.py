@@ -207,7 +207,7 @@ def test_cli_can_override_multiscale_settings_and_disable_cleanup(
     frames = reference_rgb(source, tools, 48, 36, deband="gentle")
     for frame in process_frames(
         frames, config=Config.load(preset),
-        source_cleanup=SourceDenoise(1, source_cleanup=SourceCleanup(0.75)),
+        source_cleanup=SourceCleanup(0.75),
     ):
         expected.update(frame.tobytes())
     assert record["processed_rgb_sha256"] == expected.hexdigest()

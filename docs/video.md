@@ -126,12 +126,12 @@ processing takes more time and memory.
 Deblocking and debanding operate on planar YUV. RGB sources are converted to YUV
 first when these treatments are enabled.
 
-Every compressed preset also enables adaptive denoising before Fattal, including
-the multiscale, noise, and fBm variations. Denoising suppresses fine and correlated
+All presets leave adaptive denoising disabled by default, including the compressed
+multiscale, noise, and fBm variations. Enable it with `--denoise 0.5` for a lighter
+blend or `--denoise 1` for full strength. Denoising suppresses fine and correlated
 grain in floating-point RGB/luminance before cleanup and any intentional source
 noise. Stronger source detail receives less smoothing. Very fine texture may
-soften. Use `--denoise 0.5` for a lighter blend or `--denoise 0` to bypass it.
-Other presets leave denoising disabled. Each frame is denoised independently,
+soften. Use `--denoise 0` to bypass it. Each frame is denoised independently,
 without temporal color trails. The sidecar records strength, processed frames,
 method, and denoising time separately from cleanup.
 
