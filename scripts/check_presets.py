@@ -10,7 +10,7 @@ This checker never regenerates its expected baselines.
 from __future__ import annotations
 
 import argparse
-from dataclasses import fields
+from dataclasses import fields, replace
 from io import BytesIO
 import hashlib
 import json
@@ -40,6 +40,8 @@ def load_contract(path: Path = CONTRACT):
     for entry in contract["presets"]:
         config_path = ROOT / entry["config"]
         config = Config.load(config_path)
+        # Frozen image baselines retain the original hard shadow cutoff.
+        config = replace(config, numerics=replace(config.numerics, shadow_softness=0))
         data = yaml.safe_load(config_path.read_text())
         if set(data) != {item.name for item in fields(Config)}:
             raise ValueError(f"Preset must specify every section: {entry['name']}")

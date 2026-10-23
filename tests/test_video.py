@@ -58,7 +58,9 @@ def test_default_encoder_retains_x264_quality_controls():
 
 @pytest.mark.parametrize("suffix", ["yaml", "toml", "json"])
 def test_nvenc_configuration_round_trip(tmp_path, suffix):
-    config = Config(video=VideoConfig(encoder="h264_nvenc", nvenc_cq=23, nvenc_preset="p6"))
+    config = Config(video=VideoConfig(
+        encoder="h264_nvenc", nvenc_cq=23, nvenc_preset="p6", filter_backend="auto",
+    ))
     content = {
         "yaml": config.to_yaml(), "toml": config.to_toml(),
         "json": json.dumps(config.to_dict()),
@@ -82,7 +84,8 @@ def test_cli_overrides_nvenc_configuration(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(cli, "process_video", observe)
     main([
         "video", "source.mp4", "output.mp4", "--config", str(path),
-        "--encoder", "h264_nvenc", "--nvenc-cq", "21", "--nvenc-preset", "p3", "--json",
+        "--encoder", "h264_nvenc", "--nvenc-cq", "21", "--nvenc-preset", "p3",
+        "--filter-backend", "auto", "--json",
     ])
     settings = json.loads(capsys.readouterr().out)["video_configuration"]
     assert settings["encoder"] == "h264_nvenc"
@@ -90,6 +93,7 @@ def test_cli_overrides_nvenc_configuration(tmp_path, monkeypatch, capsys):
     assert settings["nvenc_preset"] == "p3"
     assert settings["crf"] == 18
     assert settings["preset"] == "medium"
+    assert settings["filter_backend"] == "auto"
 
 
 @pytest.mark.parametrize("diagnostic", [
@@ -259,6 +263,43 @@ def test_nvenc_hardware_output_matches_cpu_filtering(tmp_path, tools):
     assert not list(tmp_path.glob(".luma-fatal-*"))
 
 
+def test_gpu_filtering_fallback_preserves_source_treatments_and_records_selection(
+    tmp_path, tools, monkeypatch, capsys,
+):
+    from dataclasses import replace
+    from luma_fatal import gpu
+
+    attempts = []
+
+    def unavailable():
+        attempts.append(1)
+        raise gpu.GPUUnavailable("controlled missing CUDA runtime")
+
+    monkeypatch.setattr(gpu, "CudaSolver", unavailable)
+    source = make_clip(tmp_path / "source.mkv", tools, width=320, height=240, count=8)
+    config = Config(
+        processing=ProcessingConfig(resize=False),
+        video=VideoConfig(
+            filter_backend="auto", flat_cleanup=0.25, pre_noise_rms=0.2, denoise=0.5,
+        ),
+    )
+    automatic = process_video(source, tmp_path / "auto.mp4", config=config,
+                              ffmpeg=tools[0], ffprobe=tools[1])
+    cpu_config = replace(config, video=replace(config.video, filter_backend="cpu"))
+    cpu = process_video(source, tmp_path / "cpu.mp4", config=cpu_config,
+                        ffmpeg=tools[0], ffprobe=tools[1])
+    assert automatic["processed_rgb_sha256"] == cpu["processed_rgb_sha256"]
+    assert automatic["filtering"]["requested_backend"] == "auto"
+    assert automatic["filtering"]["backend"] == "cpu"
+    assert automatic["filtering"]["cpu_frames"] == 8
+    assert automatic["filtering"]["cuda_frames"] == 0
+    assert automatic["filtering"]["reason"] == "controlled missing CUDA runtime"
+    assert "gpu.py" in automatic["implementation_sources_sha256"]
+    assert attempts == [1]
+    assert "Using CPU filtering" in capsys.readouterr().err
+    assert json.loads((tmp_path / "auto.meta.json").read_text()) == automatic
+
+
 @pytest.fixture(scope="module")
 def tools():
     paths = [shutil.which(name) for name in ("ffmpeg", "ffprobe")]
@@ -368,6 +409,7 @@ def reference_rgb(path, tools, width, height, color_range="limited", deblock="of
     {"encoder": "auto"}, {"encoder": True},
     {"nvenc_cq": True}, {"nvenc_cq": -1}, {"nvenc_cq": 52}, {"nvenc_cq": 18.5},
     {"nvenc_preset": "medium"}, {"nvenc_preset": "p8"}, {"nvenc_preset": True},
+    {"filter_backend": "cuda"}, {"filter_backend": True},
 ])
 def test_video_settings_reject_invalid_values(kwargs):
     with pytest.raises(ValueError):
@@ -616,6 +658,7 @@ def test_cli_loads_config_and_applies_overrides(tmp_path, tools, capsys):
     assert record["configuration"]["parameters"]["fade"] == 100
     assert record["configuration"]["numerics"]["shadow_softness"] == 6
     assert record["video_configuration"] == {
+        "filter_backend": "cpu",
         "encoder": "libx264", "nvenc_cq": 18, "nvenc_preset": "p4",
         "crf": 23, "preset": "ultrafast", "deblock": "weak8", "deband": "off",
         "denoise": 0.0,

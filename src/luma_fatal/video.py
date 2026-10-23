@@ -538,6 +538,12 @@ def process_video(
         source_treatment = denoiser
     cleanup_options = ({} if source_treatment is None
                        else {"source_cleanup": source_treatment})
+    filter_solver = None
+    if settings.filter_backend == "auto":
+        from .gpu import AdaptiveSolver
+
+        filter_solver = AdaptiveSolver(expected_frames=expected)
+        cleanup_options["solver"] = filter_solver
     with tempfile.TemporaryDirectory(prefix=".luma-fatal-", dir=destination.parent) as directory:
         temporary = Path(directory) / "video.mp4"
         temporary_meta = Path(directory) / "video.meta.json"
@@ -603,6 +609,10 @@ def process_video(
                 encoder=encoding_settings.encoder,
                 fallback_reason=fallback_reason,
             ),
+            filtering=(
+                dict(filter_solver.record) if filter_solver is not None else
+                dict(requested_backend="cpu", backend="cpu", reason="explicit CPU filtering")
+            ),
             source_dimensions=[stream["width"], stream["height"]],
             normalized_dimensions=list(normalized),
             prepared_dimensions=list(prepared),
@@ -663,7 +673,7 @@ def process_video(
             implementation_sources_sha256={
                 name: _digest(Path(__file__).with_name(name)) for name in (
                     "video.py", "pipeline.py", "configuration.py", "cleanup.py",
-                    "processing.py", "core.py", "numerics.py", "prenoise.py", "denoise.py",
+                    "processing.py", "core.py", "numerics.py", "prenoise.py", "denoise.py", "gpu.py",
                 )
             },
             seconds=time.perf_counter() - start,

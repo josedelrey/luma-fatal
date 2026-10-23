@@ -24,6 +24,20 @@ The hardware integration test runs when NVENC can initialize, otherwise it is
 skipped. On an NVIDIA machine, set `LUMA_FATAL_REQUIRE_NVENC_TESTS=1` to require
 that test to pass, and run `python -m pytest -q tests/test_video.py -k nvenc`.
 
+CUDA solver agreement tests skip when the optional GPU dependencies or hardware
+are unavailable. Automatic selection and fallback tests use controlled clocks
+and fake devices on every platform. To require the real GPU tests:
+
+```bash
+uv sync --locked --extra gpu
+LUMA_FATAL_REQUIRE_GPU_TESTS=1 uv run --extra gpu python -m pytest -q tests/test_gpu.py
+```
+
+Set the environment variable with your shell's syntax on Windows. GPU tests
+cover odd/even geometry, reference boundary behavior, both filter variants,
+resizing, source cleanup, noise, and denoising. CPU fixture expectations remain
+unchanged. CUDA graph/kernel initialization occurs on the first eligible frame.
+
 Regression tests use bundled [fixtures](../tests/fixtures/) or deterministically
 generated inputs. They cover scalar float32 bit patterns, filter outputs,
 interpolation, geometry, decoding, and color conversion. Video tests use generated
@@ -34,6 +48,8 @@ as well as agreement with the image API before lossy encoding.
 
 The preset checker compares dimensions, RGB pixels, encoded JPEG bytes, decoded
 pixels, and codec settings against [presets.json](../tests/fixtures/presets.json).
+It explicitly uses shadow softness `0` to preserve the frozen image baselines.
+Bundled YAML presets default to `6`.
 The checker never regenerates expected results. To retain outputs and a JSON
 report, run:
 

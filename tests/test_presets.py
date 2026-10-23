@@ -20,7 +20,9 @@ from scripts import check_presets
     ids=lambda path: path.stem,
 )
 def test_presets_apply_full_effect(path):
-    assert configuration.Config.load(path).parameters.fade == 0
+    config = configuration.Config.load(path)
+    assert config.parameters.fade == 0
+    assert config.numerics.shadow_softness == 6
 
 
 def test_frozen_recipes_are_complete_and_independent_of_device_defaults(monkeypatch):
@@ -52,7 +54,6 @@ def test_compressed_presets_enable_smooth_shadows_debanding_and_cleanup(variant)
             reference.processing, resize=False, limit_input_pixels=False,
             max_edge=None, max_input_pixels=None,
         ),
-        numerics=replace(reference.numerics, shadow_softness=6),
         video=replace(reference.video, deband="gentle", denoise=0.0, flat_cleanup=0.75),
     )
 
@@ -103,6 +104,8 @@ def test_cli_applies_frozen_recipe_without_fade_or_codec_overrides(
             str(output),
             "--config",
             str(check_presets.ROOT / entry["config"]),
+            "--shadow-softness",
+            "0",
         ]
     )
     expected = sample["expected"][config.filter]

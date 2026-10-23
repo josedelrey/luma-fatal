@@ -49,6 +49,7 @@ numerics:
   power_mode: "approximate"
 video:
   encoder: h264_nvenc
+  filter_backend: auto
   nvenc_cq: 18
   nvenc_preset: p4
   crf: 18
