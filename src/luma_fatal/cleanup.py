@@ -151,6 +151,18 @@ class SourceCleanup:
         self.seconds = 0.0
 
     def __call__(self, rgb, reference_luminance):
+        fields, factor = self.prepare(rgb)
+        start = time.perf_counter()
+        result = _compose(rgb, reference_luminance, fields, factor, self.strength)
+        self.seconds += time.perf_counter() - start
+        return result
+
+    def prepare(self, rgb):
+        """Update guide/mask history and return reduced cleanup coefficients.
+
+        Device backends can compose these fields without downloading a full
+        floating RGB frame. One call advances the history by one source frame.
+        """
         start = time.perf_counter()
         factor = max(1, (max(rgb.shape[:2]) + 383) // 384)
         small, variance_rgb = _reduce(rgb, factor)
@@ -201,10 +213,9 @@ class SourceCleanup:
         b = mean_rgb - a * mean[..., None]
         fields = np.concatenate((mask[..., None], uniform_filter(a, (5, 5, 1)),
                                  uniform_filter(b, (5, 5, 1))), axis=2)
-        result = _compose(rgb, reference_luminance, fields, factor, self.strength)
         self.frames += 1
         self.seconds += time.perf_counter() - start
-        return result
+        return fields, factor
 
 
 class MultiscaleSourceCleanup:

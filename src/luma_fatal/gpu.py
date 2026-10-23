@@ -70,6 +70,127 @@ class GPUUnavailable(RuntimeError):
     """The optional CUDA backend cannot process the requested field."""
 
 
+_COMPOSE_SOURCE = r'''
+template<typename T> __device__ void compose_pixel(
+    const T* rgb, const float* reference, const float* fields, float* output,
+    int h, int w, int fh, int fw, int factor, double strength
+) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= h * w) return;
+    int y = i / w, x = i % w;
+    double fy = fmin(fmax((y + 0.5) / factor - 0.5, 0.0), fh - 1.0);
+    double fx = fmin(fmax((x + 0.5) / factor - 0.5, 0.0), fw - 1.0);
+    int y0 = (int)fy, x0 = (int)fx;
+    int y1 = min(y0 + 1, fh - 1), x1 = min(x0 + 1, fw - 1);
+    double wy = fy - y0, wx = fx - x0;
+    double weights[4] = {(1 - wy) * (1 - wx), (1 - wy) * wx,
+                         wy * (1 - wx), wy * wx};
+    int indices[4] = {(y0 * fw + x0) * 7, (y0 * fw + x1) * 7,
+                      (y1 * fw + x0) * 7, (y1 * fw + x1) * 7};
+    double mask = fields[indices[0]] * weights[0] + fields[indices[1]] * weights[1]
+                + fields[indices[2]] * weights[2] + fields[indices[3]] * weights[3];
+    double amount = strength * fmin(fmax(mask, 0.0), 1.0);
+    if (amount == 0) {
+        for (int c = 0; c < 3; ++c) output[i * 3 + c] = rgb[i * 3 + c];
+        output[h * w * 3 + i] = reference[i];
+        return;
+    }
+    double guide = (4899.0 * rgb[i * 3] + 9617.0 * rgb[i * 3 + 1]
+                  + 1868.0 * rgb[i * 3 + 2]) / 16384.0;
+    double candidate_luminance = 0;
+    for (int c = 0; c < 3; ++c) {
+        double a = fields[indices[0] + c + 1] * weights[0]
+                 + fields[indices[1] + c + 1] * weights[1]
+                 + fields[indices[2] + c + 1] * weights[2]
+                 + fields[indices[3] + c + 1] * weights[3];
+        double b = fields[indices[0] + c + 4] * weights[0]
+                 + fields[indices[1] + c + 4] * weights[1]
+                 + fields[indices[2] + c + 4] * weights[2]
+                 + fields[indices[3] + c + 4] * weights[3];
+        double original = rgb[i * 3 + c];
+        double candidate = fmin(fmax(a * guide + b, original - 4.0), original + 4.0);
+        candidate = fmin(fmax(candidate, 0.0), 255.0);
+        output[i * 3 + c] = original + amount * (candidate - original);
+        candidate_luminance += candidate * (c == 0 ? 4899 : c == 1 ? 9617 : 1868);
+    }
+    double ref = reference[i];
+    output[h * w * 3 + i] = ref + amount * (candidate_luminance / (16384.0 * 255.0) - ref);
+}
+
+extern "C" __global__ void compose_u8(
+    const unsigned char* rgb, const float* reference, const float* fields, float* output,
+    int h, int w, int fh, int fw, int factor, double strength
+) { compose_pixel(rgb, reference, fields, output, h, w, fh, fw, factor, strength); }
+
+extern "C" __global__ void compose_f32(
+    const float* rgb, const float* reference, const float* fields, float* output,
+    int h, int w, int fh, int fw, int factor, double strength
+) { compose_pixel(rgb, reference, fields, output, h, w, fh, fw, factor, strength); }
+'''
+
+
+class CudaComposer:
+    """Interpolate cleanup fields and compose RGB/luminance in one GPU pass."""
+
+    def __init__(self):
+        try:
+            import cupy as cp
+
+            self.cp = cp
+            self.device = cp.cuda.runtime.getDevice()
+            module = cp.RawModule(code=_COMPOSE_SOURCE, options=("--fmad=false",))
+            self.kernels = {
+                np.dtype(np.uint8): module.get_function("compose_u8"),
+                np.dtype(np.float32): module.get_function("compose_f32"),
+            }
+            self.stream = cp.cuda.Stream(non_blocking=True)
+            self.key = None
+            self.input_key = None
+        except Exception as error:
+            raise GPUUnavailable(f"CUDA cleanup composition is unavailable: {error}") from error
+
+    def __call__(self, rgb, reference_luminance, fields, factor, strength):
+        cp = self.cp
+        try:
+            with cp.cuda.Device(self.device), self.stream:
+                height, width = rgb.shape[:2]
+                if rgb.dtype not in self.kernels or height * width * 4 > np.iinfo(np.int32).max:
+                    raise GPUUnavailable("CUDA cleanup requires uint8 or float32 RGB within int32 indexing")
+                key = (rgb.shape, rgb.dtype, fields.shape)
+                if self.input_key != key:
+                    self.rgb = cp.empty(rgb.shape, dtype=rgb.dtype)
+                    self.reference = cp.empty((height, width), dtype=cp.float32)
+                    self.fields = cp.empty(fields.shape, dtype=cp.float32)
+                    self.input_key = key
+                self.rgb.set(np.ascontiguousarray(rgb), stream=self.stream)
+                self.reference.set(np.ascontiguousarray(reference_luminance, dtype=np.float32), stream=self.stream)
+                self.fields.set(np.ascontiguousarray(fields, dtype=np.float32), stream=self.stream)
+                self.compose_device(self.rgb, self.reference, self.fields, factor, strength)
+                output = self.output.get(stream=self.stream)
+                return output[:height * width * 3].reshape(rgb.shape), output[height * width * 3:].reshape(height, width)
+        except Exception as error:
+            raise GPUUnavailable(f"CUDA cleanup composition failed: {error}") from error
+
+    def compose_device(self, rgb, reference, fields, factor, strength):
+        """Return device views using the caller's current CUDA stream."""
+        cp = self.cp
+        height, width = rgb.shape[:2]
+        if rgb.dtype not in self.kernels or height * width * 4 > np.iinfo(np.int32).max:
+            raise GPUUnavailable("CUDA cleanup requires uint8 or float32 RGB within int32 indexing")
+        key = (rgb.shape, rgb.dtype, fields.shape)
+        if self.key != key:
+            self.output = cp.empty(height * width * 4, dtype=cp.float32)
+            self.key = key
+        fields = cp.asarray(fields, dtype=cp.float32)
+        self.kernels[rgb.dtype](
+            ((height * width + 255) // 256,), (256,),
+            (rgb, reference, fields, self.output,
+             np.int32(height), np.int32(width), np.int32(fields.shape[0]),
+             np.int32(fields.shape[1]), np.int32(factor), np.float64(strength)),
+        )
+        return self.output[:height * width * 3].reshape(rgb.shape), self.output[height * width * 3:].reshape(height, width)
+
+
 class CudaSolver:
     """Reuse GPU buffers and a CUDA graph for one stream's solver geometry.
 
