@@ -41,7 +41,7 @@ class SourceNoise:
 
     The same delta enters all RGB channels and luminance, with a common range
     limit to avoid colored clipping. Noise never passes through RGB8 quantization.
-    The mask sees the original source. Optional cleanup precedes noise injection.
+    The mask sees incoming pixels before cleanup and noise injection.
     Original source pixels still control core shadow protection and Fade.
     """
 

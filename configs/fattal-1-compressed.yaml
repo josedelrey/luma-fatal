@@ -1,4 +1,4 @@
-# Fattal 1 with smooth shadows and gentle debanding for compressed video.
+# Fattal 1 with adaptive denoising, smooth shadows and gentle debanding.
 schema_version: 1
 filter: fattal1
 parameters:
@@ -55,6 +55,7 @@ video:
   preset: medium
   deblock: off
   deband: gentle
+  denoise: 1.0
   flat_cleanup: 0.75
   flat_cleanup_mode: standard
   flat_cleanup_coarse_strength: 1.0

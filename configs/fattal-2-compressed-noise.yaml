@@ -1,4 +1,4 @@
-# Fattal 2 with standard cleanup 0.75 and fine masked noise 0.35.
+# Fattal 2 with inherited denoising, standard cleanup 0.75 and masked noise 0.35.
 extends: fattal-2-compressed.yaml
 video:
   flat_cleanup: 0.75

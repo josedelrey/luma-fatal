@@ -1,4 +1,4 @@
-# Fattal 1 with masked fBm-like noise 0.75 and cleanup disabled.
+# Fattal 1 with inherited denoising, fBm-like noise 0.75 and flat cleanup disabled.
 extends: fattal-1-compressed.yaml
 video:
   flat_cleanup: 0.0

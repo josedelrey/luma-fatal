@@ -49,7 +49,7 @@ def test_compressed_presets_enable_smooth_shadows_debanding_and_cleanup(variant)
     assert compressed == replace(
         reference,
         numerics=replace(reference.numerics, shadow_softness=6),
-        video=replace(reference.video, deband="gentle", flat_cleanup=0.75),
+        video=replace(reference.video, deband="gentle", denoise=1.0, flat_cleanup=0.75),
     )
 
 

@@ -62,10 +62,10 @@ The [configs/](../configs/) directory contains all presets, with a matching
 | [default.yaml](../configs/default.yaml) | General defaults, 8 MP input cap, 1536-pixel working edge |
 | [high.yaml](../configs/high.yaml) | General defaults with a 12 MP input cap and 2048-pixel working edge |
 | [fattal-1.yaml](../configs/fattal-1.yaml), [fattal-2.yaml](../configs/fattal-2.yaml) | Full reference effect with neutral experimental controls |
-| [fattal-1-compressed.yaml](../configs/fattal-1-compressed.yaml) | Smooth shadows, gentle video debanding, standard cleanup 0.75 |
-| [fattal-1-compressed-multiscale.yaml](../configs/fattal-1-compressed-multiscale.yaml) | Compressed preset with scale-separated cleanup |
-| [fattal-1-compressed-noise.yaml](../configs/fattal-1-compressed-noise.yaml) | Compressed preset with masked high-pass noise at 0.35 RMS |
-| [fattal-1-compressed-fbm.yaml](../configs/fattal-1-compressed-fbm.yaml) | Masked fBm-like noise at 0.75 RMS, cleanup disabled |
+| [fattal-1-compressed.yaml](../configs/fattal-1-compressed.yaml) | Adaptive denoising, smooth shadows, gentle video debanding, standard cleanup 0.75 |
+| [fattal-1-compressed-multiscale.yaml](../configs/fattal-1-compressed-multiscale.yaml) | Denoising with scale-separated cleanup |
+| [fattal-1-compressed-noise.yaml](../configs/fattal-1-compressed-noise.yaml) | Denoising with masked high-pass noise added afterward at 0.35 RMS |
+| [fattal-1-compressed-fbm.yaml](../configs/fattal-1-compressed-fbm.yaml) | Denoising with masked fBm-like noise added afterward at 0.75 RMS, flat cleanup disabled |
 
 Use `extends` to inherit from a parent configuration and override selected settings.
 Parent paths are relative to the child file. Named sections merge by setting,
@@ -207,6 +207,25 @@ requirements, input preparation, and examples. Output is silent SDR H.264 MP4.
 | `video.input_color` | `auto` | `auto`, `bt709`, `bt601-pal`, `bt601-ntsc`, `srgb`, `bt2020-pq`, or `bt2020-hlg`. Overrides source color interpretation. `auto` uses metadata and recorded assumptions. The `srgb` profile uses a BT.709 matrix for YUV storage. RGB storage always uses an identity matrix. |
 | `video.input_range` | `auto` | `auto`, `limited`, or `full`. Overrides the source signal range. `auto` uses metadata and the [input preparation rules](video.md#input-preparation). |
 
+### Source denoising
+
+Adaptive denoising runs at working resolution before smooth-area cleanup,
+generated source noise, and the Fattal effect. It estimates noise in RGB detail
+bands at three scales, including correlated grain, and shrinks detail according
+to local signal energy. Floating-point RGB and luminance avoid a new RGB8
+quantization step. Frames are independent, with no temporal color averaging.
+Original pixels still control shadow protection and Fade.
+
+All `compressed` presets enable denoising at `1.0`, including their inherited
+multiscale, noise, and fBm variations. Other presets and API defaults leave it
+disabled. Very fine texture near the estimated noise floor may soften. Reduce
+the strength to retain more grain and detail. The existing noise/fBm variations
+retain their intentional noise, which is added after denoising.
+
+| Key | Default | Accepted values and behavior |
+| --- | --- | --- |
+| `video.denoise` | `0.0` | `0–1`. Adaptive spatial denoising strength. `0` bypasses denoising. Compressed presets select `1.0`. |
+
 ### Smooth-area cleanup
 
 Cleanup runs at working resolution before the Fattal effect. Its mask protects
@@ -222,15 +241,15 @@ Fade. Cleanup can change smooth skin and grain.
 
 ### Source noise
 
-Generated noise enters floating-point RGB and luminance after cleanup and before
-the effect. The same change enters every RGB channel. Original pixels still
-control shadow protection and Fade.
+Generated noise enters floating-point RGB and luminance after denoising and
+cleanup and before the effect. The same change enters every RGB channel.
+Original pixels still control shadow protection and Fade.
 
 | Key | Default | Accepted values and behavior |
 | --- | --- | --- |
 | `video.pre_noise_rms` | `0.0` | `0–4`, in source 0–255 units. Noise RMS before masking and range limits. `0` disables noise. |
 | `video.pre_noise_kind` | `highpass` | `highpass` produces fine high-pass noise. `fbm` produces correlated noise from multiple spatial scales. |
-| `video.pre_noise_masked` | `true` | Boolean. Restrict noise to the original source's smooth-region mask. Disable to apply it across the frame, subject to range limits. |
+| `video.pre_noise_masked` | `true` | Boolean. Restrict noise to the source's smooth-region mask, measured after denoising when enabled. Disable to apply it across the frame, subject to range limits. |
 | `video.pre_noise_seed` | `20261017` | Integer ≥ `0`. Seed for the deterministic noise field. The field stays fixed in working-frame coordinates without motion compensation. |
 
 ## CLI overrides

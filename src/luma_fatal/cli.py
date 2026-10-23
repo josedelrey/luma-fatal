@@ -81,7 +81,7 @@ def _settings(args: argparse.Namespace) -> Config:
     video = {
         name: getattr(args, name)
         for name in (
-            "crf", "preset", "deblock", "deband", "flat_cleanup",
+            "crf", "preset", "deblock", "deband", "denoise", "flat_cleanup",
             "flat_cleanup_mode", "flat_cleanup_coarse_strength", "flat_cleanup_sigma",
             "pre_noise_rms", "pre_noise_kind", "pre_noise_masked", "pre_noise_seed",
             "frame_rate", "input_color", "input_range",
@@ -276,6 +276,10 @@ def main(argv: list[str] | None = None) -> None:
     video.add_argument(
         "--deband", choices=("off", "gentle"), default=None,
         help="Optional gentle source debanding before the Fattal filter",
+    )
+    video.add_argument(
+        "--denoise", type=float, default=None,
+        help="Adaptive source denoising before Fattal, 0 to 1, default 0",
     )
     video.add_argument(
         "--flat-cleanup", type=float, default=None,

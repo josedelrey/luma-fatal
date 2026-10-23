@@ -11,6 +11,7 @@ from scipy.ndimage import gaussian_filter
 
 from luma_fatal.prenoise import SourceNoise, noise_field
 from luma_fatal.cleanup import MultiscaleSourceCleanup, SourceCleanup
+from luma_fatal.denoise import SourceDenoise
 from luma_fatal.configuration import Config, VideoConfig
 from luma_fatal.core import apply_core
 from luma_fatal.numerics import luminance_fractional
@@ -212,6 +213,7 @@ def test_video_cli_noise_presets_match_frame_pipeline_and_metadata(
         kind="highpass" if approach == "noise" else "fbm",
         cleanup=0.75 if approach == "noise" else 0,
     )
+    callback = SourceDenoise(config.video.denoise, source_cleanup=callback)
     expected = hashlib.sha256()
     for frame in process_frames(frames, config=config, source_cleanup=callback):
         expected.update(frame.tobytes())
@@ -255,6 +257,7 @@ def test_cli_noise_overrides_and_disabled_path(tmp_path, tools, capsys):
         ])
         record = json.loads(capsys.readouterr().out)
         callback = SourceNoise(rms, masked=False, seed=42) if rms else None
+        callback = SourceDenoise(config.video.denoise, source_cleanup=callback)
         expected = hashlib.sha256()
         for frame in process_frames(frames, config=config, source_cleanup=callback):
             expected.update(frame.tobytes())
