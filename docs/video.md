@@ -1,6 +1,6 @@
 # Video processing
 
-[Overview](../README.md) · [Presets](configuration.md#presets) · [Experiments](experiments.md)
+[Overview](../README.md) · [Configuration](configuration.md#video-settings) · [Experiments](experiments.md)
 
 ## Requirements and input
 
@@ -44,10 +44,7 @@ is sequential, with bounded buffering.
   Frames are duplicated or dropped as needed. Use `--frame-rate` to select a rate
   explicitly, such as `30` or `30000/1001`.
 
-Use `--input-color` and `--input-range` to override missing or incorrect metadata.
-Color profiles are `bt709`, `bt601-pal`, `bt601-ntsc`, `srgb`, `bt2020-pq`, and
-`bt2020-hlg`. The `srgb` profile uses a BT.709 matrix for YUV storage. RGB storage
-always uses an identity matrix. These options describe the source. For example:
+For missing or incorrect metadata, specify the source interpretation and cadence:
 
 ```bash
 luma-fatal video local_inputs/input.mp4 outputs/stylized.mp4 \
@@ -55,10 +52,9 @@ luma-fatal video local_inputs/input.mp4 outputs/stylized.mp4 \
   --frame-rate 30000/1001 --progress
 ```
 
-The corresponding configuration keys are `video.input_color`,
-`video.input_range`, and `video.frame_rate`. All default to the string `auto`.
-Explicit frame rates must also be strings in configuration files and `VideoConfig`.
-The sidecar records resolved color, geometry, timing, and preparation filters.
+See [encoding and source preparation](configuration.md#encoding-and-source-preparation)
+for configuration keys, defaults, and accepted values. The sidecar records resolved
+color, geometry, timing, and preparation filters.
 
 ## Output
 
@@ -75,63 +71,24 @@ The `.meta.json` sidecar records resolved settings, dimensions, frame count,
 color and timing policies, hashes, tool versions, and implementation fingerprints.
 Encoded bytes may differ across FFmpeg versions and platforms.
 
-| CLI option | Config key | Default | Purpose |
-| --- | --- | --- | --- |
-| `--crf` | `video.crf` | `18` | H.264 quality, range 0–51 |
-| `--preset` | `video.preset` | `medium` | H.264 encoder speed preset |
-| `--deblock` | `video.deblock` | `off` | Weak deblocking on 4- or 8-pixel boundaries with `weak4` or `weak8` |
-| `--deband` | `video.deband` | `off` | Gentle decoded-YUV debanding with `gentle` |
-
-Deblocking and debanding run on planar YUV before the final sRGB conversion and
-filtering. RGB sources are converted to YUV first when these treatments are
-enabled. Deblocking can soften detail and may miss artifacts with variable codec
-block sizes, while debanding can alter fine texture and variation between frames.
+Encoder controls are listed in the
+[configuration reference](configuration.md#encoding-and-source-preparation).
 
 ## Compressed sources
 
-The compressed presets enable gentle debanding, smooth shadows, and standard
-smooth-area cleanup at strength 0.75:
+Use a [compressed-source preset](configuration.md#presets):
 
 ```bash
 luma-fatal video local_inputs/input.mp4 outputs/cleaned.mp4 \
   --config configs/fattal-1-compressed.yaml --progress
 ```
 
-Cleanup detects smooth regions at working resolution and uses a continuous mask
-to protect texture and abrupt edges. Guided filtering then corrects RGB and
-luminance in floating point before the Fattal effect. Fade and shadow protection
-continue to use the original source pixels.
+Deblocking and debanding operate on planar YUV. RGB sources are converted to YUV
+first when these treatments are enabled.
 
-The mask carries temporal history: local changes release it, strong edges
+The cleanup mask carries temporal history: local changes release it, strong edges
 override it, and scene cuts reset it. RGB frames are never averaged over time.
-Cleanup can still change smooth skin and grain you may wish to preserve. The
-sidecar records cleanup time and mask resets.
+The sidecar records cleanup time and mask resets.
 
-| CLI option | Config key | Default | Meaning |
-| --- | --- | --- | --- |
-| `--flat-cleanup` | `video.flat_cleanup` | `0` | Cleanup strength, 0–1, with 0 disabling it |
-| `--flat-cleanup-mode` | `video.flat_cleanup_mode` | `standard` | `standard` or `multiscale` correction |
-| `--flat-cleanup-coarse-strength` | `video.flat_cleanup_coarse_strength` | `1.0` | Broad correction strength, 0–1, used only in multiscale mode |
-| `--flat-cleanup-sigma` | `video.flat_cleanup_sigma` | `1.2` | Multiscale Gaussian radius, 0.01–16 working pixels |
-
-In multiscale mode, `flat_cleanup` controls the strength of fine correction.
-The bundled multiscale presets use fine strength 0.75, broad strength 1.0, and
-sigma 1.2.
-
-## Source noise
-
-Noise is added to floating-point RGB and luminance after cleanup and before
-filtering. By default, the original source's smooth-region mask limits where
-it is applied.
-
-| CLI option | Config key | Default | Meaning |
-| --- | --- | --- | --- |
-| `--pre-noise-rms` | `video.pre_noise_rms` | `0` | RMS in input 0–255 units, range 0–4, with 0 disabling noise |
-| `--pre-noise-kind` | `video.pre_noise_kind` | `highpass` | Fine `highpass` or correlated `fbm` noise |
-| `--pre-noise-seed` | `video.pre_noise_seed` | `20261017` | Seed for the deterministic field |
-| `--no-pre-noise-masked` | `video.pre_noise_masked` | `true` | Flag disables masking |
-
-The noise presets combine standard cleanup at 0.75 with high-pass noise at
-0.35 RMS. The fBm presets use correlated noise at 0.75 RMS with cleanup disabled.
-The noise field stays fixed in working-frame coordinates, without motion
-compensation.
+See [smooth-area cleanup](configuration.md#smooth-area-cleanup) and
+[source noise](configuration.md#source-noise) for controls, defaults, and ranges.
