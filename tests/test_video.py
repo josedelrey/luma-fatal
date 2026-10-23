@@ -16,6 +16,7 @@ import pytest
 
 from luma_fatal import Config, FilterParams, NumericsConfig, ProcessingConfig, apply_filter, process_frames
 from luma_fatal.cleanup import SourceCleanup
+from luma_fatal.denoise import SourceDenoise
 from luma_fatal.cli import main
 from luma_fatal.video import VideoConfig, _decoded_frames, process_video
 
@@ -497,6 +498,7 @@ def test_compressed_preset_video_defaults_and_cli_overrides(
     expected = hashlib.sha256()
     decoded = reference_rgb(source, tools, 47, 35, deband=deband)
     cleanup = SourceCleanup(flat_cleanup) if flat_cleanup else None
+    cleanup = SourceDenoise(config.video.denoise, source_cleanup=cleanup)
     for frame in process_frames(decoded, config=config, source_cleanup=cleanup):
         expected.update(
             np.pad(frame, ((0, 1), (0, 1), (0, 0)), mode="edge").tobytes()
@@ -616,6 +618,7 @@ def test_cli_loads_config_and_applies_overrides(tmp_path, tools, capsys):
     assert record["video_configuration"] == {
         "encoder": "libx264", "nvenc_cq": 18, "nvenc_preset": "p4",
         "crf": 23, "preset": "ultrafast", "deblock": "weak8", "deband": "off",
+        "denoise": 0.0,
         "flat_cleanup": 0.0,
         "flat_cleanup_mode": "standard", "flat_cleanup_coarse_strength": 1.0,
         "flat_cleanup_sigma": 1.2,

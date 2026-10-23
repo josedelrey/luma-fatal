@@ -175,6 +175,7 @@ def test_image_cli_overrides_vibrance_and_records_metadata(tmp_path, capsys):
 
 def test_video_cli_vibrance_works_with_tone_controls_and_fbm(tmp_path, tools, capsys):
     from luma_fatal.prenoise import SourceNoise
+    from luma_fatal.denoise import SourceDenoise
     from test_video import make_clip, reference_rgb
 
     preset = Path(__file__).resolve().parents[1] / "configs/fattal-2-compressed-fbm.yaml"
@@ -195,6 +196,9 @@ def test_video_cli_vibrance_works_with_tone_controls_and_fbm(tmp_path, tools, ca
         config.parameters, vibrance=75, tone_strength=60, highlight_compression=75,
         black_level=5, white_level=95))
     for frame in process_frames(frames, config=config,
-                                source_cleanup=SourceNoise(0.75, kind="fbm")):
+                                source_cleanup=SourceDenoise(
+                                    config.video.denoise,
+                                    source_cleanup=SourceNoise(0.75, kind="fbm"),
+                                )):
         expected.update(frame.tobytes())
     assert record["processed_rgb_sha256"] == expected.hexdigest()

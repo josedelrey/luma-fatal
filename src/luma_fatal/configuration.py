@@ -323,6 +323,7 @@ class VideoConfig:
     encoder: str = "libx264"
     nvenc_cq: int = 18
     nvenc_preset: str = "p4"
+    denoise: float = 0.0
 
     def __post_init__(self):
         _choice("video encoder", self.encoder, ("libx264", "h264_nvenc"))
@@ -340,6 +341,7 @@ class VideoConfig:
             raise ValueError("Video deblock must be off, weak4 or weak8")
         if self.deband not in ("off", "gentle"):
             raise ValueError("Video deband must be off or gentle")
+        _finite("video denoise", self.denoise, 0, 1)
         _finite("video flat_cleanup", self.flat_cleanup, 0, 1)
         _choice("video flat_cleanup_mode", self.flat_cleanup_mode,
                 ("standard", "multiscale"))

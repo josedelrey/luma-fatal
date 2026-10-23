@@ -25,6 +25,7 @@ from .configuration import Config, VideoConfig, VIDEO_COLOR_PROFILES, resolve_co
 from .cleanup import MultiscaleSourceCleanup, SourceCleanup
 from .pipeline import process_frames
 from .prenoise import SourceNoise
+from .denoise import SourceDenoise
 from .processing import input_size
 
 
@@ -531,6 +532,10 @@ def process_video(
             source_cleanup=cleanup,
         )
     source_treatment = noise if noise is not None else cleanup
+    denoiser = None
+    if settings.denoise:
+        denoiser = SourceDenoise(settings.denoise, source_cleanup=source_treatment)
+        source_treatment = denoiser
     cleanup_options = ({} if source_treatment is None
                        else {"source_cleanup": source_treatment})
     with tempfile.TemporaryDirectory(prefix=".luma-fatal-", dir=destination.parent) as directory:
@@ -643,7 +648,8 @@ def process_video(
             discarded_audio_streams=stream["audio_streams"],
             temporal_policy=(
                 "independent effect frames, source cleanup mask history with motion/cut resets"
-                if source_treatment is not None else "independent frames, no stabilization"
+                if cleanup is not None or noise is not None
+                else "independent frames, no stabilization"
             ),
             processed_rgb_sha256=processed_hash.hexdigest(),
             runtime=dict(
@@ -657,7 +663,7 @@ def process_video(
             implementation_sources_sha256={
                 name: _digest(Path(__file__).with_name(name)) for name in (
                     "video.py", "pipeline.py", "configuration.py", "cleanup.py",
-                    "processing.py", "core.py", "numerics.py", "prenoise.py",
+                    "processing.py", "core.py", "numerics.py", "prenoise.py", "denoise.py",
                 )
             },
             seconds=time.perf_counter() - start,
@@ -668,6 +674,12 @@ def process_video(
                 seconds=cleanup.seconds, guide_max_edge=384,
                 mode=settings.flat_cleanup_mode,
                 policy="soft source mask, guided floating RGB/luminance, no temporal RGB averaging",
+            )
+        if denoiser is not None:
+            record["source_denoise"] = dict(
+                strength=settings.denoise, frames=denoiser.frames,
+                seconds=denoiser.seconds, method="adaptive_multiscale",
+                policy="floating RGB/luminance before cleanup and noise, independent frames",
             )
         if noise is not None:
             record["source_noise"] = dict(

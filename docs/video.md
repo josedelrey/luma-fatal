@@ -122,9 +122,19 @@ luma-fatal video local_inputs/input.mp4 outputs/cleaned.mp4 \
 Deblocking and debanding operate on planar YUV. RGB sources are converted to YUV
 first when these treatments are enabled.
 
+Every compressed preset also enables adaptive denoising before Fattal, including
+the multiscale, noise, and fBm variations. Denoising suppresses fine and correlated
+grain in floating-point RGB/luminance before cleanup and any intentional source
+noise. Stronger source detail receives less smoothing. Very fine texture may
+soften. Use `--denoise 0.5` for a lighter blend or `--denoise 0` to bypass it.
+Other presets leave denoising disabled. Each frame is denoised independently,
+without temporal color trails. The sidecar records strength, processed frames,
+method, and denoising time separately from cleanup.
+
 The cleanup mask carries temporal history: local changes release it, strong edges
 override it, and scene cuts reset it. RGB frames are never averaged over time.
 The sidecar records cleanup time and mask resets.
 
-See [smooth-area cleanup](configuration.md#smooth-area-cleanup) and
+See [source denoising](configuration.md#source-denoising),
+[smooth-area cleanup](configuration.md#smooth-area-cleanup), and
 [source noise](configuration.md#source-noise) for controls, defaults, and ranges.

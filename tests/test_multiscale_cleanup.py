@@ -11,6 +11,7 @@ import pytest
 from luma_fatal.cleanup import MultiscaleSourceCleanup as ScaleSeparatedCleanup
 from luma_fatal.configuration import Config, VideoConfig
 from luma_fatal.cleanup import SourceCleanup
+from luma_fatal.denoise import SourceDenoise
 from luma_fatal.pipeline import process_frames
 from luma_fatal.numerics import luminance_u8
 from test_video import tools
@@ -153,6 +154,7 @@ def test_cli_multiscale_preset_matches_working_frame_pipeline_and_metadata(
     config = Config.load(preset)
     frames = reference_rgb(source, tools, 48, 36, deband="gentle")
     callback = ScaleSeparatedCleanup(0.75, 1.0, 1.2)
+    callback = SourceDenoise(config.video.denoise, source_cleanup=callback)
     for frame in process_frames(frames, config=config, source_cleanup=callback):
         expected.update(frame.tobytes())
 
@@ -204,7 +206,8 @@ def test_cli_can_override_multiscale_settings_and_disable_cleanup(
     expected = hashlib.sha256()
     frames = reference_rgb(source, tools, 48, 36, deband="gentle")
     for frame in process_frames(
-        frames, config=Config.load(preset), source_cleanup=SourceCleanup(0.75)
+        frames, config=Config.load(preset),
+        source_cleanup=SourceDenoise(1, source_cleanup=SourceCleanup(0.75)),
     ):
         expected.update(frame.tobytes())
     assert record["processed_rgb_sha256"] == expected.hexdigest()
