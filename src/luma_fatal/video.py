@@ -540,10 +540,10 @@ def process_video(
                        else {"source_cleanup": source_treatment})
     filter_solver = None
     if settings.filter_backend == "auto":
-        from .gpu import AdaptiveSolver
+        from .gpu import AdaptiveFrameProcessor
 
-        filter_solver = AdaptiveSolver(expected_frames=expected)
-        cleanup_options["solver"] = filter_solver
+        filter_solver = AdaptiveFrameProcessor(config, source_treatment, expected_frames=expected)
+        cleanup_options = {"frame_processor": filter_solver}
     with tempfile.TemporaryDirectory(prefix=".luma-fatal-", dir=destination.parent) as directory:
         temporary = Path(directory) / "video.mp4"
         temporary_meta = Path(directory) / "video.meta.json"
@@ -673,7 +673,7 @@ def process_video(
             implementation_sources_sha256={
                 name: _digest(Path(__file__).with_name(name)) for name in (
                     "video.py", "pipeline.py", "configuration.py", "cleanup.py",
-                    "processing.py", "core.py", "numerics.py", "prenoise.py", "denoise.py", "gpu.py",
+                    "processing.py", "core.py", "numerics.py", "prenoise.py", "denoise.py", "gpu.py", "gpu_core.py",
                 )
             },
             seconds=time.perf_counter() - start,

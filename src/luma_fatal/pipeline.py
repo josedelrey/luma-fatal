@@ -93,7 +93,7 @@ def apply_filter(
     return result
 
 
-def process_frames(frames, *, config: Config, source_cleanup=None, solver=None):
+def process_frames(frames, *, config: Config, source_cleanup=None, solver=None, frame_processor=None):
     """Yield processed decoded RGB8 frames lazily, in input order.
 
     The caller supplies RGB arrays after decoding and color interpretation.
@@ -103,6 +103,7 @@ def process_frames(frames, *, config: Config, source_cleanup=None, solver=None):
     decoding, timestamps, audio and encoding belong to the video adapter.
     An optional solver callback accepts the divergence, iteration count and
     relaxation, and returns the reconstructed scalar field.
+    A frame_processor callback can instead own the complete RGB8 frame path.
     """
     if not isinstance(config, Config):
         raise ValueError("config must be a Config")
@@ -111,6 +112,11 @@ def process_frames(frames, *, config: Config, source_cleanup=None, solver=None):
     for frame in frames:
         if not isinstance(frame, np.ndarray) or frame.ndim != 3 or frame.shape[2] != 3:
             raise ValueError("frames must be decoded RGB arrays")
+        if frame_processor is not None:
+            if frame.dtype != np.uint8 or min(frame.shape[:2]) < 1:
+                raise ValueError("frames must be decoded RGB8 arrays")
+            yield frame_processor(frame)
+            continue
         if source_cleanup is None and solver is None:
             yield apply_filter(frame, config=config)
         else:

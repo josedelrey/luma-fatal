@@ -169,53 +169,64 @@ class SourceCleanup:
         within_activity = _detrended_activity(
             small, variance_rgb, factor, rgb.shape[0], rgb.shape[1]
         )
-        guide_rgb = gaussian_filter(small, sigma=(0.5, 0.5, 0), mode="reflect")
-        fine = guide_rgb - gaussian_filter(guide_rgb, sigma=(1, 1, 0), mode="reflect")
-        coarse = guide_rgb - gaussian_filter(guide_rgb, sigma=(2, 2, 0), mode="reflect")
-        fine_activity = np.sqrt(np.maximum(uniform_filter(fine * fine, (3, 3, 1)), 0)).max(2)
-        coarse_activity = np.sqrt(np.maximum(uniform_filter(coarse * coarse, (3, 3, 1)), 0)).max(2)
+        fields = self.prepare_fields(small, within_activity, rgb.shape)
+        self.seconds += time.perf_counter() - start
+        return fields, factor
+
+    def prepare_fields(self, small, within_activity, shape, *, backend=np, filters=None):
+        """Build reduced guide fields using NumPy or a compatible device backend."""
+        gaussian, uniform, maximum = filters or (gaussian_filter, uniform_filter, maximum_filter)
+
+        def smoothstep(low, high, values):
+            values = backend.clip((values - low) / (high - low), 0, 1)
+            return values * values * (3 - 2 * values)
+
+        guide_rgb = gaussian(small, sigma=(0.5, 0.5, 0), mode="reflect")
+        fine = guide_rgb - gaussian(guide_rgb, sigma=(1, 1, 0), mode="reflect")
+        coarse = guide_rgb - gaussian(guide_rgb, sigma=(2, 2, 0), mode="reflect")
+        fine_activity = backend.sqrt(backend.maximum(uniform(fine * fine, (3, 3, 1)), 0)).max(2)
+        coarse_activity = backend.sqrt(backend.maximum(uniform(coarse * coarse, (3, 3, 1)), 0)).max(2)
         # High-pass gradients reject abrupt edges without penalizing a smooth slope.
-        edge = np.float32(2) * np.maximum(
-            np.abs(np.diff(fine, axis=0, append=fine[-1:])),
-            np.abs(np.diff(fine, axis=1, append=fine[:, -1:])),
+        edge = backend.float32(2) * backend.maximum(
+            backend.abs(backend.diff(fine, axis=0, append=fine[-1:])),
+            backend.abs(backend.diff(fine, axis=1, append=fine[:, -1:])),
         ).max(2)
-        edge_guard = ((1 - _smoothstep(3, 10, maximum_filter(edge, 3)))
-                      * (1 - _smoothstep(1, 5, within_activity)))
-        mask = ((1 - _smoothstep(0.7, 3, fine_activity))
-                * (1 - _smoothstep(2, 7, coarse_activity)) * edge_guard)
-        guide = (small[..., 0] * np.float32(4899 / 16384)
-                 + small[..., 1] * np.float32(9617 / 16384)
-                 + small[..., 2] * np.float32(1868 / 16384))
-        mean = uniform_filter(guide, 5)
-        variance = np.maximum(uniform_filter(guide * guide, 5) - mean * mean, 0)
-        mean_mask = uniform_filter(mask, 5)
-        a = (uniform_filter(guide * mask, 5) - mean * mean_mask) / (variance + 9)
+        edge_guard = ((1 - smoothstep(3, 10, maximum(edge, 3)))
+                      * (1 - smoothstep(1, 5, within_activity)))
+        mask = ((1 - smoothstep(0.7, 3, fine_activity))
+                * (1 - smoothstep(2, 7, coarse_activity)) * edge_guard)
+        guide = (small[..., 0] * backend.float32(4899 / 16384)
+                 + small[..., 1] * backend.float32(9617 / 16384)
+                 + small[..., 2] * backend.float32(1868 / 16384))
+        mean = uniform(guide, 5)
+        variance = backend.maximum(uniform(guide * guide, 5) - mean * mean, 0)
+        mean_mask = uniform(mask, 5)
+        a = (uniform(guide * mask, 5) - mean * mean_mask) / (variance + 9)
         b = mean_mask - a * mean
-        mask = np.minimum(
-            np.clip(uniform_filter(a, 5) * guide + uniform_filter(b, 5), 0, 1), edge_guard
+        mask = backend.minimum(
+            backend.clip(uniform(a, 5) * guide + uniform(b, 5), 0, 1), edge_guard
         )
-        if self.shape == rgb.shape:
-            change = np.abs(guide_rgb - self.guide).max(2)
-            cut = np.mean(change) > 12 or np.mean(change > 12) > 0.3
+        if self.shape == shape:
+            change = backend.abs(guide_rgb - self.guide).max(2)
+            cut = backend.mean(change) > 12 or backend.mean(change > 12) > 0.3
             if not cut:
-                persistence = np.float32(0.7) * (1 - _smoothstep(1, 6, change))
+                persistence = backend.float32(0.7) * (1 - smoothstep(1, 6, change))
                 mask = mask + persistence * (self.mask - mask)
             else:
                 self.resets += 1
         elif self.shape is not None:
             self.resets += 1
         # Newly appearing edges immediately override mask history.
-        mask = np.minimum(mask, edge_guard).astype(np.float32)
-        self.guide, self.mask, self.shape = guide_rgb, mask, rgb.shape
-        mean_rgb = uniform_filter(small, (5, 5, 1))
-        cov = uniform_filter(guide[..., None] * small, (5, 5, 1)) - mean[..., None] * mean_rgb
+        mask = backend.minimum(mask, edge_guard).astype(backend.float32)
+        self.guide, self.mask, self.shape = guide_rgb, mask, shape
+        mean_rgb = uniform(small, (5, 5, 1))
+        cov = uniform(guide[..., None] * small, (5, 5, 1)) - mean[..., None] * mean_rgb
         a = cov / (variance[..., None] + 16)
         b = mean_rgb - a * mean[..., None]
-        fields = np.concatenate((mask[..., None], uniform_filter(a, (5, 5, 1)),
-                                 uniform_filter(b, (5, 5, 1))), axis=2)
+        fields = backend.concatenate((mask[..., None], uniform(a, (5, 5, 1)),
+                                 uniform(b, (5, 5, 1))), axis=2)
         self.frames += 1
-        self.seconds += time.perf_counter() - start
-        return fields, factor
+        return fields
 
 
 class MultiscaleSourceCleanup:
