@@ -22,6 +22,51 @@ def cuda_solver():
         pytest.skip(str(error))
 
 
+@pytest.fixture(scope="module")
+def cuda_composer(cuda_solver):
+    return gpu.CudaComposer()
+
+
+@pytest.mark.parametrize("shape,factor", [((1, 1), 1), ((17, 23), 1), ((37, 53), 3), ((385, 769), 3)])
+@pytest.mark.parametrize("dtype", [np.uint8, np.float32])
+@pytest.mark.parametrize("strength", [0.0, 0.25, 1.0])
+def test_cuda_cleanup_composition_matches_cpu(cuda_composer, shape, factor, dtype, strength):
+    from luma_fatal.cleanup import _compose
+
+    rng = np.random.default_rng(21)
+    rgb = rng.integers(0, 256, (*shape, 3), np.uint8).astype(dtype)
+    if dtype == np.float32:
+        rgb = np.clip(rgb + rng.uniform(-0.3, 0.3, rgb.shape).astype(np.float32), 0, 255)
+    reference = rng.uniform(0, 1, shape).astype(np.float32)
+    fields = rng.normal(0, 0.1, ((*np.ceil(np.array(shape) / factor).astype(int), 7))).astype(np.float32)
+    fields[..., 0] = rng.uniform(-0.1, 1.1, fields.shape[:2])
+    original = rgb.copy(), reference.copy(), fields.copy()
+    expected = _compose(rgb, reference, fields, factor, strength)
+    actual = cuda_composer(rgb, reference, fields, factor, strength)
+    for a, b in zip(actual, expected):
+        np.testing.assert_allclose(a, b, rtol=1e-6, atol=2e-5)
+    for a, b in zip((rgb, reference, fields), original):
+        np.testing.assert_array_equal(a, b)
+    assert np.max(np.abs(actual[0] - rgb)) <= 4.00002
+
+
+def test_cuda_cleanup_device_arrays_avoid_host_round_trip(cuda_composer):
+    from luma_fatal.cleanup import _compose
+
+    cp = cuda_composer.cp
+    rgb = np.random.default_rng(17).integers(0, 256, (37, 53, 3), np.uint8)
+    reference = rgb[..., 0].astype(np.float32) / np.float32(255)
+    fields = np.ones((13, 18, 7), np.float32)
+    fields[..., 0] = 0
+    expected = _compose(rgb, reference, fields, 3, 1.0)
+    with cuda_composer.stream:
+        result = cuda_composer.compose_device(cp.asarray(rgb), cp.asarray(reference), fields, 3, 1.0)
+        assert all(isinstance(value, cp.ndarray) for value in result)
+        actual = [value.get(stream=cuda_composer.stream) for value in result]
+    for a, b in zip(actual, expected):
+        np.testing.assert_array_equal(a, b)
+
+
 @pytest.mark.parametrize("shape", [(2, 2), (3, 2), (2, 9), (17, 24), (24, 17), (257, 259)])
 @pytest.mark.parametrize("iterations,relaxation", [(1, 0.5), (17, 1.0), (80, 1.9)])
 def test_cuda_solver_preserves_sweeps_and_boundary_conditions(cuda_solver, shape, iterations, relaxation):

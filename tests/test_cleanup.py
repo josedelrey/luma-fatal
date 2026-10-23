@@ -14,6 +14,22 @@ def reference(rgb):
     return luminance_u8(rgb).astype(np.float32) * np.float32(1 / 255)
 
 
+def test_prepared_fields_preserve_history_and_composition():
+    from luma_fatal.cleanup import _compose
+
+    rgb = np.random.default_rng(12).integers(90, 94, (97, 131, 3), np.uint8)
+    ordinary, staged = SourceCleanup(0.75), SourceCleanup(0.75)
+    for frame in [rgb, rgb, 255 - rgb]:
+        expected = ordinary(frame, reference(frame))
+        fields, factor = staged.prepare(frame)
+        actual = _compose(frame, reference(frame), fields, factor, staged.strength)
+        for a, b in zip(actual, expected):
+            np.testing.assert_array_equal(a, b)
+        np.testing.assert_array_equal(staged.mask, ordinary.mask)
+        assert staged.frames == ordinary.frames
+        assert staged.resets == ordinary.resets
+
+
 @pytest.mark.parametrize("strength", [True, -0.1, 1.01, float("nan"), float("inf"), "0.2"])
 def test_cleanup_rejects_invalid_strength(strength):
     with pytest.raises(ValueError):
