@@ -13,14 +13,44 @@ On Windows, use `.venv\Scripts\Activate.ps1` in PowerShell or
 `source .venv/Scripts/activate` in Git Bash.
 
 Use `--config` to load a YAML, TOML, or JSON file. Explicit CLI options take
-precedence over file settings, and unknown settings are rejected. To export a
-complete configuration, including defaults, run:
+precedence over file settings. Without `--config`, the application uses built-in
+defaults. It does not load `configs/default.yaml` automatically.
+
+To export all built-in defaults, run:
 
 ```bash
 luma-fatal config --output outputs/settings.yaml
 ```
 
-The default filter is Fattal 1. Fade defaults to 0, applying the full effect.
+The file extension selects the format. Existing files are never overwritten.
+Run `luma-fatal config` to print the defaults without writing a file.
+
+## File structure and validation
+
+The tables below list every supported key. Section tables use full paths such as
+`parameters.fade`, written in YAML as:
+
+```yaml
+parameters:
+  fade: 20
+```
+
+Omitted settings use built-in defaults. Defaults in these tables apply before
+preset values and CLI overrides. Numeric values must be finite, and integer
+settings require integers. Booleans must be `true` or `false`. YAML words such as
+`on`, `off`, `yes`, and `no` are strings. Quote numeric strings such as
+`jpeg_subsampling: "420"` and `frame_rate: "30000/1001"`.
+
+Unknown keys, duplicate keys, invalid values, and inheritance cycles are rejected.
+The inherited configuration is validated before CLI overrides, so an override
+cannot repair an invalid file. TOML has no `null` value, so omit optional settings
+to use their defaults.
+
+| Key | Default | Accepted values and behavior |
+| --- | --- | --- |
+| `schema_version` | `1` | Integer `1` is the only supported schema. |
+| `filter` | `fattal1` | `fattal1`, `fattal2`, or `both`. Fattal 1 accumulates gradient attenuation across scales. Fattal 2 replaces it at finer scales. The image CLI can export both variants. Video and single-result Python calls require one variant. |
+| `extends` | Omitted | Path to one parent configuration file, resolved relative to this file. Child values override parent values within each section. |
 
 ## Presets
 
@@ -56,27 +86,23 @@ The run record includes the resolved settings and fingerprints of inherited file
 
 ## Effect controls
 
-The settings below belong to `parameters` and use a 0–100 scale, except for
-`output_gamma`. Their CLI flags use hyphens in place of underscores, as in
-`--tone-strength 60`.
+| Key | Default | Accepted values and behavior |
+| --- | --- | --- |
+| `parameters.alpha` | `1` | Greater than `0`, at most `100`. Scales the reference gradient magnitude used for attenuation. Must remain positive in float32 after division by 100. |
+| `parameters.beta` | `80` | `0–100`. Controls how attenuation varies with gradient strength. At `100`, attenuation is neutral, but reconstruction and normalization still run. Lower values increase the difference in treatment between weak and strong gradients. |
+| `parameters.saturation` | `100` | `0–100`. Strength of source channel-to-brightness ratios in color reconstruction. At `0`, the filtered component is grayscale. |
+| `parameters.noise` | `0` | `0–100`. Offset added to gradient magnitudes in the attenuation calculation. It changes low-gradient behavior without generating noise pixels. |
+| `parameters.fade` | `0` | `0–100`. Blend toward the original after filtering and enlargement. `0` applies the full result. `100` bypasses the effect, image orientation/color preparation, and resizing. Export encoding and video input preparation still apply. |
+| `parameters.output_gamma` | `1.0` | Positive number with a finite reciprocal. Applies `x^(1/gamma)` to clipped, normalized RGB. Above `1` brightens, below `1` darkens. |
+| `parameters.tone_strength` | `100` | `0–100`. Blend original and reconstructed brightness before color reconstruction. At `0`, source brightness is retained while other color and source treatments can still apply. |
+| `parameters.highlight_compression` | `0` | `0–100`. Roll off RGB peaks above 75% of white while preserving channel ratios. `0` disables compression. At `100`, finite nonnegative peaks are bounded. Partial strength can still leave clipping. |
+| `parameters.black_level` | `0` | `0–100`, strictly below `white_level`. Output black endpoint as a percentage of white. Raising it lifts blacks. |
+| `parameters.white_level` | `100` | `0–100`, strictly above `black_level`. Output white endpoint. Lowering it dims highlights. |
+| `parameters.vibrance` | `0` | `0–100`. Boost muted colors with a gain limited to keep channels in gamut. Grays and fully saturated colors remain unchanged at this stage. |
 
-| Setting | Reference value | Effect |
-| --- | ---: | --- |
-| `alpha` | 1 | Gradient attenuation, must remain positive in float32 after division by 100 |
-| `beta` | 80 | Gradient attenuation |
-| `saturation` | 100 | Color recombination strength |
-| `noise` | 0 | Offset in the attenuation calculation, separate from source noise |
-| `fade` | 0 | Blend toward the original, with 100 bypassing the effect |
-| `tone_strength` | 100 | Blend source and filtered brightness before color reconstruction |
-| `highlight_compression` | 0 | Roll off bright RGB peaks while preserving their channel ratios |
-| `output_gamma` | 1.0 | Positive finite gamma, above 1 brightens and below 1 darkens |
-| `vibrance` | 0 | Boost muted colors with brightness and gamut protection |
-| `black_level` | 0 | Filtered output black endpoint, as a percentage of white |
-| `white_level` | 100 | Filtered output white endpoint, strictly above black |
-
-At tone strength 0, the filter retains source brightness while still applying
-other color and source treatments. Fade blends the completed RGB result with the
-original.
+For gradients above `numerics.gradient_threshold`, attenuation at each scale is
+`((gradient + noise / 100) / ((alpha / 100) * mean_gradient))^(beta / 100 - 1)`.
+Alpha, beta, and noise interact, so their visual effects depend on the input.
 
 For a softer result:
 
@@ -86,45 +112,143 @@ luma-fatal apply assets/lantern-garden-original.png outputs/softer.png \
   --tone-strength 60 --highlight-compression 60 --black-level 5 --white-level 95
 ```
 
-Raising the black level can reduce saturation, and Fade can move pixels outside
-the selected output range.
+Output levels apply after shadow protection, including to protected pixels.
+Raising the black level can reduce saturation. Fade applies afterward and can
+move pixels outside the selected output range.
 See [processing order](method.md#processing-order) for interactions between controls.
 
 ## Resolution and export
 
-`processing.max_edge` limits the longest edge at which the effect runs. After
-filtering, the image is enlarged to the prepared input dimensions.
-Use `--max-input-pixels` and `--max-edge` to override resolution limits from the CLI.
+### Processing
 
-Reference presets apply EXIF orientation, convert supported ICC profiles to sRGB,
-and export JPEG at quality 100 with 4:2:0 subsampling and no embedded profile.
-For lossless export, use `--output-format png` with a `.png` destination.
+| Key | Default | Accepted values and behavior |
+| --- | --- | --- |
+| `processing.device_class` | `medium` | `low`, `medium`, or `high`. Selects the size budgets below. This is a fixed profile, with no hardware detection. |
+| `processing.max_edge` | `null` | `null` uses the device-class working edge. An integer ≥ `2` overrides it. Limits the longest edge at which the effect runs. The result is enlarged to the prepared input dimensions afterward. |
+| `processing.max_input_pixels` | `null` | `null` uses the device-class input budget. An integer ≥ `4` overrides it. Caps input area before working-resolution filtering and can reduce final output dimensions. |
+| `processing.limit_input_pixels` | `true` | Boolean. Disable to remove the input-area cap while retaining the working-edge limit. |
+| `processing.resize` | `true` | Boolean. Disable to run at original dimensions without input-area fitting or working-resolution reduction. |
+| `processing.transparency` | `reject` | `reject` refuses nonopaque pixels. `straight` permits experimental straight-alpha RGBA processing, retaining alpha. Video output is always opaque. |
+| `processing.blend_mode` | `normal` | Only `normal` is supported. Controls blending of the filtered result with the original. |
+| `processing.working_resampler` | `nearest` | `nearest`, `bilinear`, or `bicubic` reduction to working resolution. Bilinear and bicubic use no antialias prefilter and truncate to RGB8. Bicubic clamps overshoot. Input-area fitting and enlargement use their own fixed resamplers. |
+
+| Device class | Input-area budget | Working longest edge |
+| --- | ---: | ---: |
+| `low` | 4,000,000 pixels | 1024 pixels |
+| `medium` | 8,000,000 pixels | 1536 pixels |
+| `high` | 12,000,000 pixels | 2048 pixels |
+
+`null` selects a device-class budget. To disable a limit, use the corresponding
+boolean. With `resize: false`, both explicit limits must be `null`. With
+`limit_input_pixels: false`, `max_input_pixels` must be `null`. Input-area
+reduction requires opaque pixels, so disable input pixel limiting when processing
+transparent RGBA that would exceed the budget.
+
+### Image input
+
+These settings apply to file and Pillow image inputs. NumPy arrays must already
+contain interpreted RGB pixels. Video uses [its own input preparation](video.md#input-preparation).
+
+| Key | Default | Accepted values and behavior |
+| --- | --- | --- |
+| `image.color_space` | `srgb` | `srgb` converts embedded ICC profiles to sRGB, assuming sRGB when no profile exists. `encoded` bypasses ICC conversion and processes encoded channel values. |
+| `image.color_backend` | `matrix_trc` | `matrix_trc` uses the built-in converter for supported RGB matrix/TRC profiles and falls back to Little CMS for unsupported transforms or input modes. `lcms` requests Little CMS directly. Used when converting to sRGB. |
+| `image.exif_orientation` | `apply` | `apply` rotates or mirrors according to EXIF orientation. `ignore` keeps the stored pixel orientation. |
+| `image.decode_sampling` | `true` | Boolean. Allows early sampling of supported JPEG/PNG file inputs according to the input-area budget, before color conversion, orientation, and final area fitting. Disable for full decoding. Can change pixels. Already decoded arrays are unaffected. |
+
+### Image output
+
+These settings control image file encoding. They do not affect video encoding
+or in-memory array outputs.
+
+| Key | Default | Accepted values and behavior |
+| --- | --- | --- |
+| `output.format` | `jpeg` | `jpeg` or `png`. The destination must have a matching `.jpg`/`.jpeg` or `.png` extension. |
+| `output.jpeg_quality` | `100` | Integer `1–100`. Higher values generally increase JPEG quality and file size. |
+| `output.jpeg_subsampling` | `"420"` | `"444"` preserves full chroma resolution. `"422"` halves it horizontally. `"420"` halves it horizontally and vertically. JPEG only. |
+| `output.embed_icc` | `false` | Boolean. Embed the available output ICC profile in PNG or JPEG. |
+| `output.jpeg_background` | `null` | `null` or three RGB integers from `0–255`, such as `[255, 255, 255]`. Sets the background for compositing RGBA into JPEG. Without a background, JPEG export rejects nonopaque pixels. PNG retains alpha. |
 
 ## Numerical controls
 
-| Key | Reference value | Behavior |
+| Key | Default | Accepted values and behavior |
 | --- | --- | --- |
-| `numerics.iterations` | `80` | Poisson solver iteration count, at least 1 |
-| `numerics.relaxation` | `1.9` | Poisson relaxation factor, strictly between 0 and 2 after float32 conversion |
-| `numerics.pyramid_min_size` | `32` | Minimum pyramid dimension, at least 2 |
-| `numerics.normalization_low` | `0.001` | Lower normalization quantile, below `normalization_high` |
-| `numerics.normalization_high` | `0.995` | Upper normalization quantile, below 1 |
-| `numerics.normalization_floor` | `0.0001` | Positive normalization floor, at most 1 |
-| `numerics.gradient_threshold` | `0.0001` | Positive gradient threshold, at most 1 |
-| `numerics.log_offset` | `0.01` | Positive luminance offset before logarithms, at most 1 |
-| `numerics.shadow_threshold` | `6` | Shadow preservation cutoff, 0–255 |
-| `numerics.detail_level` | `0` | Omit this many finest attenuation scales |
-| `numerics.power_mode` | `approximate` | Select reference approximations or `standard` NumPy powers |
-| `numerics.shadow_softness` | `0` | Smooth the shadow cutoff with a half-width of 1–255 luminance levels |
-| `numerics.luminance_mode` | `rounded` | Select rounded or `fractional` luminance before the logarithm |
-| `processing.working_resampler` | `nearest` | Select `nearest`, `bilinear`, or `bicubic` reduction to working resolution |
+| `numerics.iterations` | `80` | Integer ≥ `1`. Poisson solver iteration count. More iterations increase computation and change convergence. |
+| `numerics.relaxation` | `1.9` | Greater than `0`, below `2`. Solver update factor. Float32 weights `relaxation` and `1 - relaxation` must remain strictly inside `(0, 2)` and `(-1, 1)`, respectively. Values too close to the endpoints are rejected. |
+| `numerics.pyramid_min_size` | `32` | Integer ≥ `2`. Controls the coarsest pyramid scale. Smaller values permit more coarse scales. |
+| `numerics.normalization_low` | `0.001` | `0 ≤ low < high < 1`. Lower quantile of nonzero reconstructed brightness used for normalization. Default selects approximately the 0.1st percentile. |
+| `numerics.normalization_high` | `0.995` | `low < high < 1`. Upper normalization quantile. Default selects approximately the 99.5th percentile. |
+| `numerics.normalization_floor` | `0.0001` | Greater than `0`, at most `1`, positive in float32. Fallback for nonpositive normalized brightness and all-zero normalization input. |
+| `numerics.gradient_threshold` | `0.0001` | Greater than `0`, at most `1`, positive in float32. Gradients at or below this magnitude retain neutral attenuation at that scale. |
+| `numerics.log_offset` | `0.01` | Greater than `0`, at most `1`, positive in float32. Offset added before the luminance logarithm and subtracted after exponentiation. Avoids log-of-zero and changes dark-region behavior. |
+| `numerics.shadow_threshold` | `6` | Integer `0–255`. Original-source luminance cutoff for preserving source RGB before output-level mapping. |
+| `numerics.detail_level` | `0` | Integer ≥ `0`. Number of finest attenuation scales to omit. If all are omitted, attenuation is neutral, but reconstruction and normalization still run. |
+| `numerics.power_mode` | `approximate` | `approximate` uses reference power approximations. `standard` uses NumPy float64 powers for attenuation and color reconstruction, narrowing attenuation to float32. |
+| `numerics.shadow_softness` | `0` | Integer `0–255`. Half-width of the smooth transition around `shadow_threshold`, in source luminance levels. `0` keeps a hard cutoff. Transition endpoints are clamped to `0–255`. |
+| `numerics.luminance_mode` | `rounded` | `rounded` rounds source luminance to integer levels before the logarithm. `fractional` retains fractional luminance. Neither recovers detail lost in an 8-bit source. |
 
-The solver also converts `1 - relaxation` to float32 and requires this weight to
-remain strictly between -1 and 1. Values too close to either endpoint are rejected.
+## Video settings
 
-All numerical settings have matching CLI flags, such as `--iterations 40` and
-`--normalization-low 0.01`, which take precedence over YAML settings. Neutral
-values preserve reference behavior. See the [method notes](method.md) for the
-numerical implications and
-[configuration.py](../src/luma_fatal/configuration.py) for solver settings and
-validation rules.
+These settings apply to the video adapter. See [video processing](video.md) for
+requirements, input preparation, and examples. Output is silent SDR H.264 MP4.
+
+### Encoding and source preparation
+
+| Key | Default | Accepted values and behavior |
+| --- | --- | --- |
+| `video.crf` | `18` | Integer `0–51`. H.264 quality. Lower values generally give higher quality and larger files. `0` requests lossless encoding, but input preparation and pixel-format conversions still apply. |
+| `video.preset` | `medium` | `ultrafast`, `superfast`, `veryfast`, `faster`, `fast`, `medium`, `slow`, `slower`, or `veryslow`. Slower presets spend more time on compression. |
+| `video.deblock` | `off` | `off`, `weak4`, or `weak8`. Weak source deblocking on 4- or 8-pixel boundaries before sRGB conversion and filtering. Can soften detail and miss artifacts with other block sizes. |
+| `video.deband` | `off` | `off` or `gentle`. Source debanding before sRGB conversion and filtering. Can reduce tonal steps and alter fine texture or variation between frames. |
+| `video.frame_rate` | `"auto"` | `"auto"` or a positive rate string such as `"30"` or `"30000/1001"`. Selects constant output cadence, duplicating or dropping frames as needed. Automatic rate selection is described under [input preparation](video.md#input-preparation). |
+| `video.input_color` | `auto` | `auto`, `bt709`, `bt601-pal`, `bt601-ntsc`, `srgb`, `bt2020-pq`, or `bt2020-hlg`. Overrides source color interpretation. `auto` uses metadata and recorded assumptions. The `srgb` profile uses a BT.709 matrix for YUV storage. RGB storage always uses an identity matrix. |
+| `video.input_range` | `auto` | `auto`, `limited`, or `full`. Overrides the source signal range. `auto` uses metadata and the [input preparation rules](video.md#input-preparation). |
+
+### Smooth-area cleanup
+
+Cleanup runs at working resolution before the Fattal effect. Its mask protects
+texture and abrupt edges. Original pixels still control shadow protection and
+Fade. Cleanup can change smooth skin and grain.
+
+| Key | Default | Accepted values and behavior |
+| --- | --- | --- |
+| `video.flat_cleanup` | `0.0` | `0–1`. Cleanup strength. `0` disables cleanup in either mode, including broad correction. In multiscale mode, positive values control fine correction. |
+| `video.flat_cleanup_mode` | `standard` | `standard` applies guided RGB/luminance correction. `multiscale` splits that correction into fine and broad components. |
+| `video.flat_cleanup_coarse_strength` | `1.0` | `0–1`. Broad correction strength, used only when cleanup is enabled in multiscale mode. |
+| `video.flat_cleanup_sigma` | `1.2` | `0.01–16`. Gaussian standard deviation in working pixels for separating broad and fine correction. Used only in multiscale mode. |
+
+### Source noise
+
+Generated noise enters floating-point RGB and luminance after cleanup and before
+the effect. The same change enters every RGB channel. Original pixels still
+control shadow protection and Fade.
+
+| Key | Default | Accepted values and behavior |
+| --- | --- | --- |
+| `video.pre_noise_rms` | `0.0` | `0–4`, in source 0–255 units. Noise RMS before masking and range limits. `0` disables noise. |
+| `video.pre_noise_kind` | `highpass` | `highpass` produces fine high-pass noise. `fbm` produces correlated noise from multiple spatial scales. |
+| `video.pre_noise_masked` | `true` | Boolean. Restrict noise to the original source's smooth-region mask. Disable to apply it across the frame, subject to range limits. |
+| `video.pre_noise_seed` | `20261017` | Integer ≥ `0`. Seed for the deterministic noise field. The field stays fixed in working-frame coordinates without motion compensation. |
+
+## CLI overrides
+
+Settings use CLI flags with the section name removed and underscores replaced by
+hyphens, such as `--tone-strength 60`, `--max-edge 2048`, and `--pre-noise-rms 0.35`.
+`output.format` uses `--output-format`. Boolean settings also accept a `--no-`
+form, such as `--no-resize`, `--no-embed-icc`, and `--no-pre-noise-masked`.
+`--jpeg-background` takes three integers, such as `--jpeg-background 255 255 255`.
+`schema_version` and `extends` are file-only settings.
+
+Image input/output flags apply to `apply` and `evaluate`. Video flags apply to
+`video`. Effect, processing, and numerical flags apply to all three commands.
+Run `luma-fatal COMMAND --help` for command-specific options.
+
+Changing `--device-class` clears inherited explicit size limits unless they are
+also supplied on the CLI. `--no-resize` clears inherited limits, and
+`--no-limit-input-pixels` clears the inherited input-area limit. Explicit CLI
+limits must still satisfy the processing constraints.
+
+`--profile bounded-1536` selects built-in defaults. `--profile core` starts from
+those defaults with resizing disabled and straight RGBA allowed. `--profile`
+cannot be combined with `--config`. Profiles are CLI/API conveniences, with no
+configuration-file key.
