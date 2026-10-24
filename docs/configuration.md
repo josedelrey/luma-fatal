@@ -59,11 +59,11 @@ The [configs/](../configs/) directory contains all presets, with a matching
 All bundled YAML presets use `numerics.shadow_softness: 6`, equivalent to
 `--shadow-softness 6`. API and CLI runs without a config keep the default of `0`.
 Each preset has a `-fast.yaml` counterpart for sustained video throughput. The
-fast copies retain 80 solver iterations and full-resolution lighting, reuse GPU
-buffers, capture compatible cleanup operations, and overlap decoding and encoding
-through three pinned frame slots. Compatible inputs are validated during the
-main decode. They require the optional GPU dependencies for GPU speedups. CPU
-fallback produces the original preset result.
+fast copies retain 80 solver iterations and the original preset's resolution
+settings. They reuse GPU buffers, capture compatible cleanup operations, and
+overlap decoding and encoding through three pinned frame slots. Compatible
+inputs are validated during the main decode. They require the optional GPU
+dependencies for GPU speedups. CPU fallback produces the original preset result.
 
 | Preset | Purpose |
 | --- | --- |

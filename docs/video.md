@@ -20,10 +20,13 @@ luma-fatal video local_inputs/input.mp4 outputs/stylized.mp4 \
   --config configs/fattal-1.yaml --progress
 ```
 
-A preliminary decoding pass checks timing, geometry, and color throughout the
-stream. Filtered frames are converted back to limited-range BT.709 for H.264 MP4
-output, using zscale's display-referred BT.709/BT.1886 interpretation. Processing
-is sequential, with bounded buffering.
+By default, a separate decoding pass checks timing, geometry, and color throughout
+the stream. Fast presets validate compatible inputs during the main decode.
+Filtering follows frame order with bounded buffering. Optional pipeline workers
+overlap decoding and encoding.
+
+Filtered frames are converted back to limited-range BT.709 for H.264 MP4 output,
+using zscale's display-referred BT.709/BT.1886 interpretation.
 
 ## Input preparation
 
@@ -116,12 +119,8 @@ encoding starts still abort the run and publish no video or sidecar.
 The experimental CUDA backend keeps luminance conversion, source cleanup,
 attenuation pyramids, the Poisson solver, normalization, color reconstruction,
 and resizing on the GPU. Optional denoising, multiscale cleanup, and source noise
-also run there. Seeded noise is generated once on the CPU to retain its pattern.
-Only RGB8 frames and small cleanup history cross the host/device boundary during
-standard cleanup. The solver retains checkerboard sweeps and both right-edge
-updates. Its parallel edge calculation uses a 96-row dependency halo, with the serial implementation
-retained for columns that exceed shared-memory capacity. Small numerical
-differences are permitted, while image commands retain the CPU reference.
+also run there. Small numerical differences are permitted. Image commands use
+CPU processing.
 
 Install the optional GPU dependencies and run a video:
 
@@ -136,55 +135,26 @@ Linux or Windows with a compatible NVIDIA driver. A separate CUDA Toolkit
 installation is unnecessary. See [CuPy installation](https://docs.cupy.dev/en/stable/install.html).
 CPU processing and NVENC encoding do not require this extra.
 
-All bundled YAML presets use `video.filter_backend: auto`. Automatic mode warms
-both complete frame paths and compares two CPU and GPU timings, including
-transfers and source treatments. It selects CUDA with at least a 20 percent
-measured improvement and enough remaining frames to recover setup cost with a
-25 percent margin. Known clips shorter than eight frames and working images
-below 65,536 pixels skip initialization. RGB agreement on the calibration frame
-must meet all of these limits, measured on channel values from 0 to 255:
+All bundled YAML presets use `video.filter_backend: auto`. Automatic mode compares
+CPU and GPU processing, including transfers, and checks their first-frame RGB
+agreement. It selects CUDA when the measured speedup justifies setup cost.
+Small workloads use the CPU when GPU setup would take too long to recover.
+First use includes kernel compilation, so startup takes longer.
 
-- Mean absolute error at most 0.25 and root mean square error at most 0.75.
-- 99th-percentile absolute error at most 2 and maximum error at most 12.
+Every bundled preset has a `-fast.yaml` copy for longer videos. These copies keep
+80 solver iterations and the original preset's resolution settings. They reuse
+buffers and calibration records, overlap video I/O, and validate compatible
+inputs during decoding. Inputs with differing nominal and average frame rates
+or unsupported pixel formats retain the separate validation pass. Both policies
+validate source metadata before publishing output.
 
-Every bundled preset has a `-fast.yaml` copy. These copies retain the reference
-80-iteration lighting solve and full resolution. They reuse GPU fields, capture
-compatible cleanup operations in a CUDA graph, and overlap decoding and encoding
-with three reusable pinned frame slots. Working cleanup history stays on the
-GPU, with host checkpoints for CPU fallback. Right-edge dependency work uses a
-64-row halo instead of 96. The optional
-`--gpu-iterations 32 --lighting-scale 0.5` combination uses a coarse residual
-correction. On the retained 1080p clip it improved GPU runtime but changed
-some channels by up to 13 levels, so it is not enabled in the fast copies. Its
-first-frame quality gate allows mean absolute error at most 1, root mean square
-error at most 1.5, 99th-percentile error at most 4, and maximum error at most
-16. An input exceeding these limits uses the CPU reference. The fast copies
-also enable pinned input frames.
-Simple decoded-frame prefetch is configurable, but remains off in the fast
-copies. The reusable-slot pipeline handles read-ahead without allocating pinned
-buffers in the decoder worker. Frames and cleanup history advance in source
-order. Encoder failures and cancellation stop both workers before releasing
-their buffers.
+Cached calibration still measures CPU/GPU processing and checks the first frame
+for visual agreement. Device, driver, configuration, geometry, or implementation
+changes invalidate the cache. GPU failures or sustained slow processing switch
+to the CPU, preserving source cleanup history.
 
-Fast copies also request validation during decoding. FFmpeg reports original
-frame metadata before deinterlacing, cadence conversion, or source preparation.
-The adapter audits that metadata before publishing the temporary output. Inputs
-whose nominal and average rates disagree retain the separate preflight to
-preserve cadence selection. RGB and other pixel formats outside planar
-YUV420/422/444 at 8, 10, or 12 bits also use the preflight to preserve color
-conversion. Original presets retain their existing scan policy.
-
-`video.calibration_cache: true` stores compatible CUDA selection records across
-runs. A cache hit uses one measured CPU/GPU pair instead of two and still checks
-the first frame for visual agreement. Device, driver, configuration, geometry,
-and implementation changes invalidate the cache. The sidecar reports
-`filtering.calibration_cache_hit`.
-
-Calibration has a one-time startup cost, including first-use kernel compilation.
-It cannot guarantee a speedup for every clip or changing machine load. A GPU
-failure or three consecutive calls slower than calibrated CPU frame processing
-switches to the CPU. Calibration and failed calls restore source-mask history
-before retrying, so each source frame advances that history once.
+See the [configuration reference](configuration.md#encoding-and-source-preparation)
+for individual performance controls and validation modes.
 
 Use `--filter-backend cpu` for reference processing or `--filter-backend auto`
 to enable selection without a preset. Missing optional dependencies or hardware
