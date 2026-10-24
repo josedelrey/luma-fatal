@@ -325,9 +325,22 @@ class VideoConfig:
     nvenc_preset: str = "p4"
     denoise: float = 0.0
     filter_backend: str = "cpu"
+    calibration_cache: bool = False
+    gpu_iterations: int | None = None
+    lighting_scale: float = 1.0
+    decode_prefetch: int = 0
+    pinned_frames: bool = False
 
     def __post_init__(self):
         _choice("video filter_backend", self.filter_backend, ("cpu", "auto"))
+        if not isinstance(self.calibration_cache, bool):
+            raise ValueError("video calibration_cache must be a boolean")
+        if self.gpu_iterations is not None:
+            _integer("video gpu_iterations", self.gpu_iterations, 1)
+        _finite("video lighting_scale", self.lighting_scale, 0.25, 1.0)
+        _integer("video decode_prefetch", self.decode_prefetch, 0, 16)
+        if not isinstance(self.pinned_frames, bool):
+            raise ValueError("video pinned_frames must be a boolean")
         _choice("video encoder", self.encoder, ("libx264", "h264_nvenc"))
         _integer("video nvenc_cq", self.nvenc_cq, 0, 51)
         _choice("video nvenc_preset", self.nvenc_preset,

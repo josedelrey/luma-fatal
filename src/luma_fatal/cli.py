@@ -86,7 +86,8 @@ def _settings(args: argparse.Namespace) -> Config:
             "pre_noise_rms", "pre_noise_kind", "pre_noise_masked", "pre_noise_seed",
             "frame_rate", "input_color", "input_range",
             "encoder", "nvenc_cq", "nvenc_preset",
-            "filter_backend",
+            "filter_backend", "calibration_cache", "gpu_iterations", "lighting_scale",
+            "decode_prefetch", "pinned_frames",
         )
         if getattr(args, name, None) is not None
     }
@@ -253,6 +254,16 @@ def main(argv: list[str] | None = None) -> None:
         "--filter-backend", choices=("cpu", "auto"), default=None,
         help="cpu uses reference filtering. auto benchmarks the optional CUDA solver before selecting it",
     )
+    video.add_argument("--calibration-cache", action=argparse.BooleanOptionalAction,
+                       default=None, help="Reuse compatible CUDA calibration across runs")
+    video.add_argument("--gpu-iterations", type=int, default=None,
+                       help="GPU Poisson iterations, leaving the CPU reference unchanged")
+    video.add_argument("--lighting-scale", type=float, default=None,
+                       help="Resolution fraction of the GPU lighting correction grid, 0.25 to 1")
+    video.add_argument("--decode-prefetch", type=int, default=None,
+                       help="Decoded frames to queue ahead, 0 to 16")
+    video.add_argument("--pinned-frames", action=argparse.BooleanOptionalAction,
+                       default=None, help="Decode into pinned host buffers for GPU transfer")
     video.add_argument("--preset", default=None, help="libx264 speed preset")
     video.add_argument(
         "--nvenc-cq", type=int, default=None,

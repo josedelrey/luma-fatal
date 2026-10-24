@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import sys
 import time
+import hashlib
+import json
+import os
+from pathlib import Path
 
 import numpy as np
 
@@ -244,6 +248,7 @@ class CudaSolver:
             self.stream = cp.cuda.Stream(non_blocking=True)
             self.key = None
             self.graph = None
+            self.graphs = {}
         except Exception as error:
             raise GPUUnavailable(
                 "CUDA filtering needs the optional gpu dependencies and a working NVIDIA GPU. "
@@ -278,6 +283,10 @@ class CudaSolver:
 
     def _prepare(self, key):
         cp = self.cp
+        if key in self.graphs:
+            self.rhs, self.solution, self.graph = self.graphs[key]
+            self.key = key
+            return
         shape, iterations, relaxation, parallel_edge = key
         height, width = shape
         if min(shape) < 2 or height * width > np.iinfo(np.int32).max:
@@ -304,6 +313,7 @@ class CudaSolver:
                 edge((1,), (256,), (*arguments, *weights), **edge_options)
         self.graph = self.stream.end_capture()
         self.key = key
+        self.graphs[key] = (self.rhs, self.solution, self.graph)
 
 
 class AdaptiveSolver:
@@ -449,7 +459,52 @@ class AdaptiveFrameProcessor:
             requested_backend="auto", backend="cpu", scope="frame_pipeline", device=None, cupy_version=None,
             reason="filtering not used", cpu_frames=0, cuda_frames=0,
             cpu_seconds=None, cuda_seconds=None, calibration_seconds=0.0, agreement=None,
+            calibration_cache_hit=False,
         )
+
+    def _cache_key(self, frame):
+        sources = tuple(Path(__file__).with_name(name) for name in (
+            "gpu.py", "gpu_core.py", "core.py", "numerics.py", "processing.py",
+            "pipeline.py", "cleanup.py", "denoise.py", "prenoise.py", "video.py",
+        ))
+        code = hashlib.sha256()
+        for path in sources:
+            code.update(path.read_bytes())
+        value = dict(code=code.hexdigest(), config=self.config.to_dict(),
+                     shape=frame.shape, device=self.cuda.name,
+                     cupy=self.cuda.version,
+                     driver=self.cuda.cp.cuda.runtime.driverGetVersion())
+        return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+
+    @staticmethod
+    def _cache_path():
+        root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+        return root / "luma-fatal" / "calibration-v1.json"
+
+    def _cache_read(self, key):
+        try:
+            data = json.loads(self._cache_path().read_text())
+            return isinstance(data, dict) and data.get(key) is True
+        except (OSError, ValueError, TypeError):
+            return False
+
+    def _cache_write(self, key):
+        path = self._cache_path()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                data = json.loads(path.read_text())
+            except (OSError, ValueError):
+                data = {}
+            if not isinstance(data, dict):
+                data = {}
+            data[key] = True
+            data = dict(list(data.items())[-100:])
+            temporary = path.with_name(path.name + f".{os.getpid()}.tmp")
+            temporary.write_text(json.dumps(data, sort_keys=True))
+            os.replace(temporary, path)
+        except OSError:
+            pass
 
     def cpu(self, frame):
         from .core import apply_core
@@ -511,6 +566,9 @@ class AdaptiveFrameProcessor:
 
                 self.cuda = CudaCore()
                 self.record.update(device=self.cuda.name, cupy_version=self.cuda.version)
+            cache_key = self._cache_key(frame) if self.config.video.calibration_cache else None
+            cache_hit = cache_key is not None and self._cache_read(cache_key)
+            self.record["calibration_cache_hit"] = cache_hit
             # Compile CPU kernels on a small nonblack probe before full-frame
             # timing. Its history is discarded like every calibration trial.
             probe = np.random.default_rng(0).integers(0, 256, (64, 64, 3), np.uint8)
@@ -519,7 +577,7 @@ class AdaptiveFrameProcessor:
             self.cuda(frame, self.config, self.source_cleanup)
             _restore_treatment(snapshot)
             cpu_samples, cuda_samples = [], []
-            for _ in range(2):
+            for _ in range(1 if cache_hit else 2):
                 begin = time.perf_counter()
                 cpu_output = self.cpu(frame)
                 cpu_samples.append(time.perf_counter() - begin)
@@ -540,11 +598,17 @@ class AdaptiveFrameProcessor:
                                calibration_seconds=self.record["calibration_seconds"] + elapsed, agreement=agreement)
             remaining = None if self.expected_frames is None else max(0, self.expected_frames - 1)
             profitable = remaining is None or remaining * (cpu_seconds - cuda_seconds) > max(0, elapsed - cpu_seconds) * 1.25
-            close = agreement["mae"] <= 0.25 and agreement["rmse"] <= 0.75 and agreement["p99"] <= 2 and agreement["maximum"] <= 12
+            if self.config.video.lighting_scale < 1:
+                close = (agreement["mae"] <= 1.0 and agreement["rmse"] <= 1.5
+                         and agreement["p99"] <= 4 and agreement["maximum"] <= 16)
+            else:
+                close = agreement["mae"] <= 0.25 and agreement["rmse"] <= 0.75 and agreement["p99"] <= 2 and agreement["maximum"] <= 12
             if cuda_seconds < cpu_seconds * 0.8 and profitable and close:
                 self.backend = "cuda"
                 self.record.update(backend="cuda", reason="CUDA is faster including frame transfers and amortized setup")
                 self.record["cuda_frames"] += 1
+                if cache_key is not None and not cache_hit:
+                    self._cache_write(cache_key)
                 _restore_treatment(cuda_state)
                 print(f"GPU filtering selected on {self.cuda.name} ({cpu_seconds / max(cuda_seconds, 1e-12):.1f}x frame speedup).", file=sys.stderr)
                 return cuda_output

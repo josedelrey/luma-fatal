@@ -367,20 +367,80 @@ def _decode_command(executable, path, stream, deblock="off", deband="off", *,
     ]
 
 
-def _decoded_frames(pipe, width, height):
+def _decoded_frames(pipe, width, height, *, pinned=False):
     size = width * height * 3
+    pin_available = True
     while True:
-        data = bytearray()
-        while len(data) < size:
-            block = pipe.read(size - len(data))
-            if not block:
+        use_pinned = pin_available and (pinned() if callable(pinned) else pinned)
+        if use_pinned:
+            try:
+                import cupy as cp
+
+                data = cp.cuda.alloc_pinned_memory(size)
+            except Exception:
+                pin_available = False
+                use_pinned = False
+        if not use_pinned:
+            data = bytearray(size)
+        view = memoryview(data)[:size]
+        length = 0
+        while length < size:
+            read = pipe.readinto(view[length:size])
+            if not read:
                 break
-            data.extend(block)
-        if not data:
+            length += read
+        if length == 0:
             return
-        if len(data) != size:
+        if length != size:
             raise ValueError("Decoder returned an incomplete RGB frame")
-        yield np.frombuffer(data, np.uint8).reshape(height, width, 3)
+        yield np.frombuffer(data, np.uint8, count=size).reshape(height, width, 3)
+
+
+def _prefetched_frames(frames, capacity):
+    from queue import Empty, Full, Queue
+    from threading import Event, Thread
+
+    pending = Queue(maxsize=capacity)
+    stop = Event()
+    done = object()
+
+    def produce():
+        try:
+            for frame in frames:
+                while not stop.is_set():
+                    try:
+                        pending.put(frame, timeout=0.05)
+                        break
+                    except Full:
+                        pass
+                if stop.is_set():
+                    return
+            item = done
+        except Exception as error:
+            item = error
+        while not stop.is_set():
+            try:
+                pending.put(item, timeout=0.05)
+                return
+            except Full:
+                pass
+
+    worker = Thread(target=produce, daemon=True, name="luma-fatal-decoder")
+    worker.start()
+    try:
+        while True:
+            try:
+                item = pending.get(timeout=0.05)
+            except Empty:
+                continue
+            if item is done:
+                return
+            if isinstance(item, Exception):
+                raise item
+            yield item
+    finally:
+        stop.set()
+        worker.join(timeout=0.5)
 
 
 def _encoder_options(settings):
@@ -560,7 +620,13 @@ def process_video(
             with _process(
                 encode, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL
             ) as (encoder, encode_log):
-                frames = _decoded_frames(decoder.stdout, *normalized)
+                frames = _decoded_frames(
+                    decoder.stdout, *normalized,
+                    pinned=lambda: (settings.pinned_frames and filter_solver is not None
+                                    and filter_solver.backend == "cuda"),
+                )
+                if settings.decode_prefetch:
+                    frames = _prefetched_frames(frames, settings.decode_prefetch)
                 with tqdm(
                     total=expected, desc="Filtering frames", unit="frame",
                     file=sys.stderr, dynamic_ncols=True, disable=not progress,

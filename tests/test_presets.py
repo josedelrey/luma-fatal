@@ -25,6 +25,24 @@ def test_presets_apply_full_effect(path):
     assert config.numerics.shadow_softness == 6
 
 
+def test_fast_presets_mirror_each_original_recipe():
+    root = Path(__file__).resolve().parents[1] / "configs"
+    originals = [path for path in root.glob("*.yaml")
+                 if not path.stem.endswith("-fast")]
+    assert len(originals) == 12
+    for path in originals:
+        fast_path = path.with_name(path.stem + "-fast.yaml")
+        assert fast_path.is_file()
+        original = configuration.Config.load(path)
+        fast = configuration.Config.load(fast_path)
+        assert fast == replace(
+            original,
+            video=replace(original.video, calibration_cache=True,
+                          gpu_iterations=32, lighting_scale=0.5, decode_prefetch=0,
+                          pinned_frames=True),
+        )
+
+
 def test_frozen_recipes_are_complete_and_independent_of_device_defaults(monkeypatch):
     _, presets = check_presets.load_contract()
     assert [entry["name"] for entry, _ in presets] == ["Fattal 1", "Fattal 2"]
@@ -116,7 +134,7 @@ def test_cli_applies_frozen_recipe_without_fade_or_codec_overrides(
             == expected["decoded_rgb_sha256"]
         )
     record = json.loads(output.with_suffix(".meta.json").read_text())
-    assert record["configuration"] == entry["configuration"]
+    assert record["configuration"] == config.to_dict()
     assert record["parameters"]["fade"] == 0
     assert record["resolved_processing"]["max_input_pixels"] == 8_000_000
 

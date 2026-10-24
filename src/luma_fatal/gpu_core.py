@@ -506,7 +506,8 @@ class CudaCore:
             self.launch("resize_fixed", output.shape, rgb, output, *self.resize_axes[key], np.int32(w), np.int32(oh), np.int32(ow))
         return output
 
-    def core(self, rgb, variant, params, numerics, *, source_cleanup=None):
+    def core(self, rgb, variant, params, numerics, *, source_cleanup=None,
+             lighting_scale=1.0):
         cp = self.cp
         if params.fade == 100 or min(rgb.shape[:2]) < 2:
             # The CPU identity extension also reports its one-pixel warning.
@@ -539,6 +540,19 @@ class CudaCore:
         rhs = cp.empty_like(lum)
         self.launch("divergence", lum.shape, log_source, phi, rhs, np.int32(h), np.int32(w))
         solution = self.solver.solve_device(rhs, numerics.iterations, numerics.relaxation)
+        if lighting_scale < 1.0:
+            low_shape = (max(2, round(h * lighting_scale)),
+                         max(2, round(w * lighting_scale)))
+            laplacian = cp.empty_like(rhs)
+            self.launch("divergence", rhs.shape, solution, cp.ones_like(rhs),
+                        laplacian, np.int32(h), np.int32(w))
+            residual = rhs - laplacian
+            coarse = self.cubic(self.gaussian(residual), low_shape)
+            coarse *= np.float32(1.0 / (lighting_scale * lighting_scale))
+            correction = self.solver.solve_device(
+                coarse, max(1, round(numerics.iterations * lighting_scale)),
+                numerics.relaxation)
+            solution += self.cubic(correction, (h, w))
         mapped = cp.empty_like(lum)
         self.launch("exponential", lum.shape, solution, mapped, np.int32(h*w), np.float32(numerics.log_offset))
         mapped = self.normalize(mapped, numerics)
@@ -575,7 +589,11 @@ class CudaCore:
                 work_size = working_size(size, config.processing.effective_max_edge) if config.processing.resize else size
                 work = self.resize(rgb, work_size, config.processing.working_resampler)
                 params = config.parameters if size == work_size else replace(config.parameters, fade=0)
-                output = self.core(work, int(config.filter[-1]), params, config.numerics, source_cleanup=source_cleanup)
+                numerics = (config.numerics if config.video.gpu_iterations is None else
+                            replace(config.numerics, iterations=config.video.gpu_iterations))
+                output = self.core(work, int(config.filter[-1]), params, numerics,
+                                   source_cleanup=source_cleanup,
+                                   lighting_scale=config.video.lighting_scale)
                 if size != work_size:
                     for intermediate in enlargement_sizes(work_size, size):
                         output = self.resize(output, intermediate)

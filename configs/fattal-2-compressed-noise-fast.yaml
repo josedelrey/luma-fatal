@@ -1,0 +1,14 @@
+# Fattal 2 with standard cleanup 0.75 and masked noise 0.35.
+extends: fattal-2-compressed-fast.yaml
+video:
+  calibration_cache: true
+  gpu_iterations: 32
+  lighting_scale: 0.5
+  decode_prefetch: 0
+  pinned_frames: true
+  flat_cleanup: 0.75
+  flat_cleanup_mode: standard
+  pre_noise_rms: 0.35
+  pre_noise_kind: highpass
+  pre_noise_masked: true
+  pre_noise_seed: 20261017

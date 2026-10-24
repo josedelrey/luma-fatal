@@ -82,6 +82,29 @@ def test_cuda_solver_preserves_sweeps_and_boundary_conditions(cuda_solver, shape
     np.testing.assert_array_equal(cuda_solver(rhs, iterations, relaxation), actual)
 
 
+def test_calibration_cache_round_trip_in_user_cache(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    processor = gpu.AdaptiveFrameProcessor(Config())
+    assert not processor._cache_read("controlled-key")
+    processor._cache_write("controlled-key")
+    assert processor._cache_read("controlled-key")
+    assert not processor._cache_read("other-key")
+
+
+def test_cuda_solver_reuses_graphs_across_grid_sizes(cuda_solver):
+    rng = np.random.default_rng(31)
+    full = rng.normal(size=(67, 91)).astype(np.float32)
+    coarse = rng.normal(size=(34, 46)).astype(np.float32)
+    full[0] = 0
+    coarse[0] = 0
+    first = cuda_solver(full, 32, 1.9)
+    cuda_solver(coarse, 16, 1.9)
+    second = cuda_solver(full, 32, 1.9)
+    np.testing.assert_array_equal(second, first)
+    assert ((67, 91), 32, 1.9, False) in cuda_solver.graphs
+    assert ((34, 46), 16, 1.9, False) in cuda_solver.graphs
+
+
 @pytest.mark.parametrize("variant", [1, 2])
 @pytest.mark.parametrize("resize", [False, True])
 @pytest.mark.parametrize("treatment", ["none", "cleanup", "noise", "denoise"])

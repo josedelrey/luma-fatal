@@ -52,7 +52,16 @@ def load_contract(path: Path = CONTRACT):
                 raise ValueError(
                     f"Preset must specify every {section} field: {entry['name']}"
                 )
-        if config.to_dict() != entry["configuration"]:
+        current = config.to_dict()
+        added_video_defaults = {
+            "calibration_cache": False, "gpu_iterations": None,
+            "lighting_scale": 1.0,
+            "decode_prefetch": 0, "pinned_frames": False,
+        }
+        for key, default in added_video_defaults.items():
+            if current["video"].pop(key) != default:
+                raise ValueError(f"Reference preset changed {key}: {entry['name']}")
+        if current != entry["configuration"]:
             raise ValueError(f"Frozen preset configuration changed: {entry['name']}")
         presets.append((entry, config))
     return contract, presets
