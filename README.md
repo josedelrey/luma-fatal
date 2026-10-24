@@ -71,7 +71,7 @@ luma-fatal video local_inputs/input.mp4 outputs/stylized.mp4 \
 
 Video inputs are prepared automatically and exported as MP4 without audio.
 For optional NVIDIA GPU filtering, install with `uv sync --locked --extra gpu`.
-Bundled presets automatically select the CUDA solver when its measured speedup
+Bundled presets automatically select CUDA frame processing when its measured speedup
 justifies setup cost, with CPU fallback. NVENC encoding is selected separately.
 See the [video guide](docs/video.md) for processing options and encoding settings.
 

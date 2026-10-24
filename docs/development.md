@@ -24,7 +24,7 @@ The hardware integration test runs when NVENC can initialize, otherwise it is
 skipped. On an NVIDIA machine, set `LUMA_FATAL_REQUIRE_NVENC_TESTS=1` to require
 that test to pass, and run `python -m pytest -q tests/test_video.py -k nvenc`.
 
-CUDA solver agreement tests skip when the optional GPU dependencies or hardware
+CUDA solver and frame agreement tests skip when the optional GPU dependencies or hardware
 are unavailable. Automatic selection and fallback tests use controlled clocks
 and fake devices on every platform. To require the real GPU tests:
 
@@ -36,7 +36,9 @@ LUMA_FATAL_REQUIRE_GPU_TESTS=1 uv run --extra gpu python -m pytest -q tests/test
 Set the environment variable with your shell's syntax on Windows. GPU tests
 cover odd/even geometry, reference boundary behavior, both filter variants,
 resizing, source cleanup, noise, and denoising. CPU fixture expectations remain
-unchanged. CUDA graph/kernel initialization occurs on the first eligible frame.
+unchanged. CUDA graph/kernel initialization occurs on the first eligible frame. Whole-frame
+tests also compare cleanup, resizing, effect controls, noise and denoising with
+the reference route. Controlled failures verify history restoration on fallback.
 
 Regression tests use bundled [fixtures](../tests/fixtures/) or deterministically
 generated inputs. They cover scalar float32 bit patterns, filter outputs,
