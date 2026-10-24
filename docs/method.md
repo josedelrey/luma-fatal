@@ -15,17 +15,17 @@ The implementation operates on 8-bit SDR inputs.
 ## Processing order
 
 1. Decode, orient, and interpret color. Apply the configured input-area budget.
-2. Reduce to working resolution. Video can apply source cleanup and noise here.
+2. Reduce to working resolution. Video can apply denoising, cleanup, then source noise.
 3. Attenuate log-luminance gradients and reconstruct brightness.
 4. Apply tone strength, recombine color, compress highlights, and apply output gamma.
 5. Apply vibrance, shadow protection, output levels, and RGB8 quantization.
 6. Enlarge to the prepared input dimensions, apply Fade, and encode.
 
 Tone strength blends source and mapped luminance before color reconstruction,
-using source brightness from before cleanup and noise. Highlight compression
-scales channels together above a knee at 75 percent of white. At full strength,
-it bounds finite, nonnegative RGB peaks. Partial strength may still leave bright
-values that clip.
+using source brightness from before denoising, cleanup, and noise. Highlight
+compression scales channels together above a knee at 75 percent of white. At full
+strength, it bounds finite, nonnegative RGB peaks. Partial strength may still
+leave bright values that clip.
 
 Gamma applies `x^(1/gamma)` to clipped, normalized RGB. Vibrance increases channel
 differences around weighted brightness, with a requested gain of
