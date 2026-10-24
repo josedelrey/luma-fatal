@@ -39,7 +39,8 @@ def test_fast_presets_mirror_each_original_recipe():
             original,
             video=replace(original.video, calibration_cache=True,
                           gpu_iterations=80, lighting_scale=1.0, decode_prefetch=0,
-                          pinned_frames=True),
+                          pinned_frames=True, gpu_buffer_reuse=True, gpu_cleanup_graph=True,
+                          solver_halo=64, pipeline_depth=3, validation_mode="stream"),
         )
 
 

@@ -73,8 +73,9 @@ Video inputs are prepared automatically and exported as MP4 without audio.
 For optional NVIDIA GPU filtering, install with `uv sync --locked --extra gpu`.
 Bundled presets automatically select CUDA frame processing when its measured speedup
 justifies setup cost, with CPU fallback. NVENC encoding is selected separately.
-Each YAML preset also has a `-fast.yaml` copy with calibration reuse and pinned
-input frames. These copies retain the original filtering recipe.
+Each YAML preset also has a `-fast.yaml` copy that reuses buffers, overlaps video
+I/O, and validates compatible sources during decoding. These copies retain
+80 solver iterations and full-resolution filtering.
 See the [video guide](docs/video.md) for processing options and encoding settings.
 
 ## Documentation

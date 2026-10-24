@@ -6,4 +6,9 @@ video:
   lighting_scale: 1.0
   decode_prefetch: 0
   pinned_frames: true
+  gpu_buffer_reuse: true
+  gpu_cleanup_graph: true
+  solver_halo: 64
+  pipeline_depth: 3
+  validation_mode: stream
   flat_cleanup_mode: multiscale
