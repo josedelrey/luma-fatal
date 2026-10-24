@@ -37,6 +37,7 @@ from luma_fatal.numerics import luminance_fractional, luminance_u8
 from luma_fatal.processing import limit_input_pixels, resize_working, working_size
 from luma_fatal.video import (
     _check, _decode_command, _decoded_frames, _encode_command, _probe, _process,
+    _resolve_color, _select_encoder, _source_rate,
 )
 
 
@@ -204,8 +205,10 @@ def run_benchmark(args, config):
 
 def run_video(args, config):
     stream = _probe(args.input, "ffprobe")
+    color, assumptions = _resolve_color(stream, config.video)
+    rate = _source_rate(stream, config.video)
     command = _decode_command("ffmpeg", args.input, stream,
-                              config.video.deblock, config.video.deband)
+                              config.video.deblock, config.video.deband, color=color)
     command[command.index("-i"):command.index("-i")] = ["-ss", str(args.start)]
     command[-1:-1] = ["-frames:v", str(args.frames)]
     callbacks = {name: CASES[name]() for name in args.cases}
@@ -215,6 +218,7 @@ def run_video(args, config):
     hashes = {name: hashlib.sha256() for name in args.cases}
     sample_indices = {0, args.frames // 2, args.frames - 1}
     count = 0
+    encoding_settings, fallback_reason = config.video, None
     with ExitStack() as stack:
         decoder, decoder_log = stack.enter_context(_process(
             command, stdout=subprocess.PIPE, stdin=subprocess.DEVNULL,
@@ -223,12 +227,16 @@ def run_video(args, config):
         for frame in _decoded_frames(decoder.stdout, stream["width"], stream["height"]):
             rgb = prepare(frame, config)
             height, width = rgb.shape[:2]
+            if not encoders:
+                encoding_settings, fallback_reason = _select_encoder(
+                    "ffmpeg", width + width % 2, height + height % 2, rate, config.video,
+                )
             samples = {"source": rgb}
             for name, callback in callbacks.items():
                 if name not in encoders:
                     cmd = _encode_command(
                         "ffmpeg", args.output / f"{name}.mp4", width + width % 2,
-                        height + height % 2, stream["avg_frame_rate"], config.video,
+                        height + height % 2, rate, encoding_settings,
                     )
                     encoders[name] = stack.enter_context(_process(
                         cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
@@ -258,7 +266,10 @@ def run_video(args, config):
     if count != args.frames:
         raise ValueError(f"Requested {args.frames} frames but decoded {count}")
     return {
-        "frames": count, "frame_rate": stream["avg_frame_rate"],
+        "frames": count, "frame_rate": str(rate),
+        "color_policy": {"resolved_input": color, "assumptions": assumptions},
+        "encoding": {"requested_encoder": config.video.encoder,
+                     "encoder": encoding_settings.encoder, "fallback_reason": fallback_reason},
         "start_seconds": args.start, "fresh_decoder_and_mask_history": True,
         "cases": {name: {
             "mean_adjacent_frame_abs_change": float(np.mean(deltas[name])),

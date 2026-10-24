@@ -544,6 +544,20 @@ def _validate_nvenc(executable, width, height, rate, settings):
         ) from error
 
 
+def _select_encoder(executable, width, height, rate, settings):
+    """Resolve hardware availability while preserving CPU encoding controls."""
+    if settings.encoder == "h264_nvenc":
+        try:
+            _validate_nvenc(executable, width, height, rate, settings)
+        except ValueError as error:
+            print(
+                "NVIDIA encoding unavailable. Falling back to CPU encoding (libx264).",
+                file=sys.stderr,
+            )
+            return replace(settings, encoder="libx264"), str(error)
+    return settings, None
+
+
 def _encode_command(executable, path, width, height, rate, settings):
     return [
         str(executable), "-v", "error", "-xerror", "-nostdin", "-n",
@@ -575,9 +589,10 @@ def process_video(
     """Prepare and filter video into silent, square-pixel SDR H.264 MP4.
 
     FFmpeg must provide zscale and libx264, plus h264_nvenc for GPU encoding,
-    bwdif for interlaced input, tonemap for HDR, and optional source filters. A streaming
-    preflight validates timestamps and stable source geometry/color. Missing color
-    tags use recorded assumptions. HDR uses Hable tone mapping with a 1000-nit peak
+    bwdif for interlaced input, tonemap for HDR, and optional source filters.
+    Timestamps and source geometry/color are validated in a separate pass or during
+    compatible decoding. Missing color tags use recorded assumptions.
+    HDR uses Hable tone mapping with a 1000-nit peak
     and 100-nit white.
     Variable timing is normalized to the nominal rate, unless frame_rate overrides
     it. Progressive CFR input retains its cadence by default.
@@ -629,17 +644,7 @@ def process_video(
         config.processing.effective_max_input_pixels if config.parameters.fade < 100 else None,
     )
     width, height = (edge + edge % 2 for edge in prepared)
-    encoding_settings, fallback_reason = settings, None
-    if settings.encoder == "h264_nvenc":
-        try:
-            _validate_nvenc(ffmpeg, width, height, rate, settings)
-        except ValueError as error:
-            fallback_reason = str(error)
-            encoding_settings = replace(settings, encoder="libx264")
-            print(
-                "NVIDIA encoding unavailable. Falling back to CPU encoding (libx264).",
-                file=sys.stderr,
-            )
+    encoding_settings, fallback_reason = _select_encoder(ffmpeg, width, height, rate, settings)
     tool_versions = {
         name: _capture([str(executable), "-version"]).splitlines()[0]
         for name, executable in (("ffmpeg", ffmpeg), ("ffprobe", ffprobe))
