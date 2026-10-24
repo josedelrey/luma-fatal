@@ -147,12 +147,16 @@ must meet all of these limits, measured on channel values from 0 to 255:
 - Mean absolute error at most 0.25 and root mean square error at most 0.75.
 - 99th-percentile absolute error at most 2 and maximum error at most 12.
 
-Every bundled preset has a `-fast.yaml` copy. These copies retain the CPU
-reference recipe and use 32 GPU solver iterations plus a half-resolution
-correction grid. The GPU quality gate for this approximation allows mean
-absolute error at most 1, root mean square error at most 1.5, 99th-percentile
-error at most 4, and maximum error at most 16. An input exceeding these limits
-uses the CPU reference. The fast copies also enable pinned input frames.
+Every bundled preset has a `-fast.yaml` copy. These copies retain the reference
+lighting solve and enable calibration reuse and pinned input frames. They
+produce the same filtered RGB as their original GPU presets. The optional
+`--gpu-iterations 32 --lighting-scale 0.5` combination uses a coarse residual
+correction. On the retained 1080p clip it improved GPU runtime but changed
+some channels by up to 13 levels, so it is not enabled in the fast copies. Its
+first-frame quality gate allows mean absolute error at most 1, root mean square
+error at most 1.5, 99th-percentile error at most 4, and maximum error at most
+16. An input exceeding these limits uses the CPU reference. The fast copies
+also enable pinned input frames.
 Decoded-frame prefetch is configurable, but remains off in the fast copies
 because it did not improve the measured pipeline on the tested machine.
 
