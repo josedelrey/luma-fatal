@@ -59,9 +59,9 @@ The [configs/](../configs/) directory contains all presets, with a matching
 All bundled YAML presets use `numerics.shadow_softness: 6`, equivalent to
 `--shadow-softness 6`. API and CLI runs without a config keep the default of `0`.
 Each preset has a `-fast.yaml` counterpart. The fast copies keep the original
-CPU recipe and enable GPU-specific solver acceleration, reusable calibration,
-and pinned input frames. They require the optional GPU dependencies to realize
-those speedups. CPU fallback produces the original preset result.
+filtering recipe and enable reusable CUDA calibration and pinned input frames.
+They require the optional GPU dependencies to realize those speedups. CPU
+fallback produces the original preset result.
 
 | Preset | Purpose |
 | --- | --- |
@@ -209,8 +209,8 @@ requirements, input preparation, and examples. Output is silent SDR H.264 MP4.
 | `video.encoder` | `libx264` | `libx264` for CPU encoding or `h264_nvenc` for NVIDIA hardware encoding. Bundled YAML presets select `h264_nvenc`. A failed NVENC preflight automatically falls back to `libx264` using `video.crf` and `video.preset`. The actual encoder and fallback diagnostics are recorded in the sidecar's `encoding` section. |
 | `video.filter_backend` | `cpu` | `cpu` retains reference processing. `auto` benchmarks the optional complete CUDA frame pipeline, including transfers and setup amortization, and uses it only when sufficiently faster and visually close. Missing GPU support, short or small workloads, insufficient speedup, and runtime GPU failures use the CPU. Bundled YAML presets select `auto`. Independent of `video.encoder`. |
 | `video.calibration_cache` | `false` | Reuse compatible CUDA calibration across runs. A cache hit still compares the first GPU frame with the CPU reference. The cache is stored under `XDG_CACHE_HOME/luma-fatal` or the user's default cache directory. |
-| `video.gpu_iterations` | `null` | `null` uses `numerics.iterations` on both backends. A positive integer overrides only the GPU solver, leaving CPU fallback unchanged. Fast presets use `32`. |
-| `video.lighting_scale` | `1.0` | Fraction `0.25–1`. Below `1`, the GPU estimates the remaining lighting correction on a smaller grid and applies it at full resolution. Fast presets use `0.5`. CPU processing retains the reference correction. |
+| `video.gpu_iterations` | `null` | `null` uses `numerics.iterations` on both backends. A positive integer overrides only the GPU solver, leaving CPU fallback unchanged. Fast presets explicitly use the reference value `80`. |
+| `video.lighting_scale` | `1.0` | Fraction `0.25–1`. Below `1`, the GPU estimates the remaining lighting correction on a smaller grid and applies it at full resolution. Fast presets retain the reference value `1.0`. CPU processing retains the reference correction. |
 | `video.decode_prefetch` | `0` | Integer `0–16`. Queue that many decoded frames in a background reader. Workload dependent and disabled in the fast presets because it slowed the tested clip when combined with pinned frames. |
 | `video.pinned_frames` | `false` | Decode RGB frames into pinned host memory for GPU upload. Falls back to ordinary buffers if pinning is unavailable. Fast presets enable it. |
 | `video.crf` | `18` | Integer `0–51`, used only by `libx264`. Lower values generally give higher quality and larger files. `0` requests lossless encoding, but input preparation and pixel-format conversions still apply. |

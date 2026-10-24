@@ -2,8 +2,8 @@
 extends: fattal-1-compressed-fast.yaml
 video:
   calibration_cache: true
-  gpu_iterations: 32
-  lighting_scale: 0.5
+  gpu_iterations: 80
+  lighting_scale: 1.0
   decode_prefetch: 0
   pinned_frames: true
   flat_cleanup_mode: multiscale

@@ -38,7 +38,7 @@ def test_fast_presets_mirror_each_original_recipe():
         assert fast == replace(
             original,
             video=replace(original.video, calibration_cache=True,
-                          gpu_iterations=32, lighting_scale=0.5, decode_prefetch=0,
+                          gpu_iterations=80, lighting_scale=1.0, decode_prefetch=0,
                           pinned_frames=True),
         )
 
