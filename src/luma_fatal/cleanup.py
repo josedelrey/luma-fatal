@@ -173,7 +173,8 @@ class SourceCleanup:
         self.seconds += time.perf_counter() - start
         return fields, factor
 
-    def prepare_fields(self, small, within_activity, shape, *, backend=np, filters=None):
+    def prepare_fields(self, small, within_activity, shape, *, backend=np, filters=None,
+                       device_decisions=False):
         """Build reduced guide fields using NumPy or a compatible device backend."""
         gaussian, uniform, maximum = filters or (gaussian_filter, uniform_filter, maximum_filter)
 
@@ -208,8 +209,12 @@ class SourceCleanup:
         )
         if self.shape == shape:
             change = backend.abs(guide_rgb - self.guide).max(2)
-            cut = backend.mean(change) > 12 or backend.mean(change > 12) > 0.3
-            if not cut:
+            if device_decisions:
+                cut = (backend.mean(change) > 12) | (backend.mean(change > 12) > 0.3)
+                persistence = backend.float32(0.7) * (1 - smoothstep(1, 6, change))
+                mask = backend.where(cut, mask, mask + persistence * (self.mask - mask))
+                self.resets = backend.asarray(self.resets, dtype=backend.int64) + cut
+            elif not (backend.mean(change) > 12 or backend.mean(change > 12) > 0.3):
                 persistence = backend.float32(0.7) * (1 - smoothstep(1, 6, change))
                 mask = mask + persistence * (self.mask - mask)
             else:

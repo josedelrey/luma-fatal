@@ -115,6 +115,20 @@ extern "C" __global__ void normalize(const float* src, float* out, const float* 
     out[i] = isnan(v) ? __int_as_float(0x7fc00000) : v > 0 ? v : floor_value;
 }
 __device__ double clip(double v) { return fmax(fmin(v,255.0),0.0); }
+extern "C" __global__ void normalize_full(const float* src, float* out,
+    const float* sorted, const long long* zeros, const long long* negatives,
+    int n, float low_q, float high_q, float floor_value) {
+    int i=blockIdx.x*blockDim.x+threadIdx.x;
+    if(i>=n)return;
+    int count=n-zeros[0];
+    if(count==0){out[i]=floor_value;return;}
+    int low=min(count-1,(int)((float)count*low_q));
+    int high=min(count-1,(int)((float)count*high_q));
+    if(low>=negatives[0])low+=zeros[0];
+    if(high>=negatives[0])high+=zeros[0];
+    float v=(src[i]-sorted[low])/(sorted[high]-sorted[low]);
+    out[i]=isnan(v)?__int_as_float(0x7fc00000):v>0?v:floor_value;
+}
 extern "C" __global__ void recombine(const unsigned char* rgb, const float* colors,
     const float* lum, const float* reference, const float* mapped, unsigned char* out,
     int n, float saturation, int standard, double gamma, double tone, double highlight,
@@ -271,7 +285,7 @@ class CudaCore:
             module = cp.RawModule(code=_SOURCE, options=("--fmad=false",))
             names = ("luminance", "log_source", "gaussian", "cubic", "gradient", "row_sums",
                      "average", "attenuation", "divergence", "exponential", "normalize", "recombine",
-                     "reduce_u8", "reduce_f32", "activity", "resize_fixed", "resize_linear", "fade_rgb", "filter_axis")
+                     "reduce_u8", "reduce_f32", "activity", "resize_fixed", "resize_linear", "fade_rgb", "filter_axis", "normalize_full")
             self.kernels = {name: module.get_function(name) for name in names}
             self.composer = CudaComposer()
             self.axes = {}
@@ -279,12 +293,48 @@ class CudaCore:
             self.mask_axes = {}
             self.noise_fields = {}
             self.filter_weights = {}
+            self.optimized = False
+            self.buffers = {}
+            self.history = {}
+            self.device_masks = {}
+            self.host_rings = {}
+            self.pending_history = []
+            self.cleanup_graphs = {}
+            self.cleanup_graph_failures = {}
+            self.capture_cleanup = False
         except Exception as error:
             raise GPUUnavailable(f"CUDA frame kernels are unavailable: {error}") from error
 
     def launch(self, name, shape, *args):
         count = int(np.prod(shape))
         self.kernels[name](((count + 255) // 256,), (256,), args)
+
+    def buffer(self, name, shape, dtype):
+        if not self.optimized:
+            return self.cp.empty(shape, dtype)
+        key = name, tuple(shape), np.dtype(dtype).str
+        if key not in self.buffers:
+            self.buffers[key] = self.cp.empty(shape, dtype)
+        return self.buffers[key]
+
+    def mirror(self, name, array):
+        key = name, array.shape, array.dtype.str
+        if key not in self.host_rings:
+            slots = [np.frombuffer(self.cp.cuda.alloc_pinned_memory(array.nbytes),
+                                   array.dtype, count=array.size).reshape(array.shape)
+                     for _ in range(4)]
+            self.host_rings[key] = [slots, 0]
+        slots, index = self.host_rings[key]
+        host = slots[index]
+        self.host_rings[key][1] = (index + 1) % len(slots)
+        array.get(out=host, stream=self.stream, blocking=False)
+        return host
+
+    def history_mask(self, treatment):
+        cached = self.device_masks.get(id(treatment))
+        if self.optimized and cached is not None and cached[0] is treatment.mask:
+            return cached[1]
+        return treatment.mask
 
     def gaussian(self, source):
         out = self.cp.empty_like(source)
@@ -340,6 +390,16 @@ class CudaCore:
 
     def normalize(self, source, numerics):
         cp = self.cp
+        if self.optimized:
+            values = cp.sort(source.ravel())
+            zeros = cp.count_nonzero(source == 0).astype(cp.int64)
+            negatives = cp.count_nonzero(source < 0).astype(cp.int64)
+            output = self.buffer("normalized", source.shape, cp.float32)
+            self.launch("normalize_full", source.shape, source, output, values,
+                        zeros, negatives, np.int32(source.size),
+                        np.float32(numerics.normalization_low), np.float32(numerics.normalization_high),
+                        np.float32(numerics.normalization_floor))
+            return output
         values = cp.sort(source[source != 0])
         output = cp.empty_like(source)
         self.launch("normalize", source.shape, source, output, values, np.int32(source.size), np.int32(values.size),
@@ -372,6 +432,49 @@ class CudaCore:
     def uniform(self, source, size=3, *, mode="reflect"):
         return self.filter(source, size, uniform=True, mode=mode)
 
+    def cleanup_fields(self, small, activity, shape, state, maximum_filter, owner):
+        cp = self.cp
+        key = owner, shape, small.shape
+        options = dict(backend=cp, filters=(self.filter, self.uniform, maximum_filter),
+                       device_decisions=self.optimized)
+        if not (self.optimized and self.capture_cleanup and state.shape == shape
+                and key not in self.cleanup_graph_failures):
+            return state.prepare_fields(small, activity, shape, **options)
+        try:
+            if key not in self.cleanup_graphs:
+                pool = cp.cuda.MemoryPool()
+                with cp.cuda.using_allocator(pool.malloc):
+                    guide, mask = cp.empty_like(state.guide), cp.empty_like(state.mask)
+                    resets = cp.empty((), cp.int64)
+                    cp.copyto(guide, state.guide)
+                    cp.copyto(mask, state.mask)
+                    cp.copyto(resets, cp.asarray(state.resets, dtype=cp.int64))
+                    trial = copy(state)
+                    trial.guide, trial.mask, trial.resets = guide, mask, resets
+                    trial.prepare_fields(small, activity, shape, **options)
+                    del trial
+                    self.stream.synchronize()
+                    captured = copy(state)
+                    captured.guide, captured.mask, captured.resets = guide, mask, resets
+                    self.stream.begin_capture()
+                    try:
+                        fields = captured.prepare_fields(small, activity, shape, **options)
+                    finally:
+                        graph = self.stream.end_capture()
+                self.cleanup_graphs[key] = (pool, graph, guide, mask, resets,
+                                             fields, captured.guide, captured.mask, captured.resets)
+            _, graph, guide, mask, resets, fields, new_guide, new_mask, new_resets = self.cleanup_graphs[key]
+            cp.copyto(guide, state.guide)
+            cp.copyto(mask, state.mask)
+            cp.copyto(resets, cp.asarray(state.resets, dtype=cp.int64))
+            graph.launch(self.stream)
+            state.guide, state.mask, state.resets = new_guide, new_mask, new_resets
+            state.frames += 1
+            return fields
+        except Exception as error:
+            self.cleanup_graph_failures[key] = str(error)
+            return state.prepare_fields(small, activity, shape, **options)
+
     def cleanup(self, rgb, reference, treatment):
         from cupyx.scipy.ndimage import maximum_filter
 
@@ -380,21 +483,36 @@ class CudaCore:
         h, w = rgb.shape[:2]
         factor = max(1, (max(h, w) + 383) // 384)
         shape = ((h + factor - 1) // factor, (w + factor - 1) // factor)
-        small, variance = cp.empty((*shape, 3), cp.float32), cp.empty((*shape, 3), cp.float32)
-        activity = cp.empty(shape, cp.float32)
+        small = self.buffer("cleanup-small", (*shape, 3), cp.float32)
+        variance = self.buffer("cleanup-variance", (*shape, 3), cp.float32)
+        activity = self.buffer("cleanup-activity", shape, cp.float32)
         dims = (np.int32(h), np.int32(w), np.int32(shape[0]), np.int32(shape[1]), np.int32(factor))
         self.launch("reduce_u8" if rgb.dtype == cp.uint8 else "reduce_f32", small.shape, rgb, small, variance, *dims)
         self.launch("activity", shape, small, variance, activity, *dims)
         device_state = copy(treatment)
-        if treatment.guide is not None:
+        cached = self.history.get(id(treatment))
+        marker = treatment.frames, id(treatment.guide), id(treatment.mask), treatment.shape
+        if self.optimized and cached is not None and cached[0] == marker:
+            device_state.guide, device_state.mask, device_state.resets = cached[1:]
+        elif treatment.guide is not None:
             device_state.guide = cp.asarray(treatment.guide)
             device_state.mask = cp.asarray(treatment.mask)
-        fields = device_state.prepare_fields(small, activity, rgb.shape, backend=cp,
-                                             filters=(self.filter, self.uniform, maximum_filter))
+        fields = self.cleanup_fields(small, activity, rgb.shape, device_state, maximum_filter,
+                                     id(treatment))
         # Keep only small history on the host so CPU fallback can resume any frame.
-        treatment.guide = device_state.guide.get(stream=self.stream)
-        treatment.mask = device_state.mask.get(stream=self.stream)
-        treatment.shape, treatment.frames, treatment.resets = rgb.shape, device_state.frames, device_state.resets
+        if self.optimized:
+            treatment.guide = self.mirror((id(treatment), "guide"), device_state.guide)
+            treatment.mask = self.mirror((id(treatment), "mask"), device_state.mask)
+            reset_array = cp.asarray(device_state.resets, dtype=cp.int64)
+            self.pending_history.append((treatment, self.mirror((id(treatment), "resets"), reset_array)))
+            treatment.shape, treatment.frames = rgb.shape, device_state.frames
+            marker = treatment.frames, id(treatment.guide), id(treatment.mask), treatment.shape
+            self.history[id(treatment)] = marker, device_state.guide, device_state.mask, reset_array
+            self.device_masks[id(treatment)] = treatment.mask, device_state.mask
+        else:
+            treatment.guide = device_state.guide.get(stream=self.stream)
+            treatment.mask = device_state.mask.get(stream=self.stream)
+            treatment.shape, treatment.frames, treatment.resets = rgb.shape, device_state.frames, device_state.resets
         output = self.composer.compose_device(rgb, reference, fields, factor, treatment.strength)
         treatment.seconds += time.perf_counter() - start
         return output
@@ -437,7 +555,7 @@ class CudaCore:
             return self.treat(color, luminance, treatment.cleanup) if treatment.cleanup is not None else (color, luminance)
         if type(treatment) is MultiscaleSourceCleanup:
             color, luminance = self.treat(rgb, reference, treatment.cleanup)
-            mask = self.mask(treatment.cleanup.mask, rgb.shape[:2])
+            mask = self.mask(self.history_mask(treatment.cleanup), rgb.shape[:2])
             original = cp.concatenate((rgb.astype(cp.float32), (reference * 255)[..., None]), axis=2)
             cleaned = cp.concatenate((color, (luminance * 255)[..., None]), axis=2)
             correction = cleaned - original
@@ -451,14 +569,18 @@ class CudaCore:
             luminance = cp.where(protected, reference, result[..., 3] / np.float32(255))
             if treatment.fine_strength == treatment.coarse_strength == 0:
                 color, luminance = rgb.astype(cp.float32), reference.copy()
-            treatment.mask = mask.get(stream=self.stream)
+            treatment.mask = (self.mirror((id(treatment), "mask"), mask) if self.optimized
+                              else mask.get(stream=self.stream))
+            self.device_masks[id(treatment)] = treatment.mask, mask
             treatment.seconds += time.perf_counter() - start
             return cp.ascontiguousarray(color), luminance
         if type(treatment) is SourceNoise:
             color, luminance = self.treat(rgb, reference, treatment.cleanup)
             shape = rgb.shape[:2]
-            mask = self.mask(treatment.cleanup.mask, shape) if treatment.masked else cp.ones(shape, cp.float32)
-            treatment.mask = mask.get(stream=self.stream)
+            mask = self.mask(self.history_mask(treatment.cleanup), shape) if treatment.masked else cp.ones(shape, cp.float32)
+            treatment.mask = (self.mirror((id(treatment), "mask"), mask) if self.optimized
+                              else mask.get(stream=self.stream))
+            self.device_masks[id(treatment)] = treatment.mask, mask
             if treatment.rms == 0:
                 treatment.seconds += time.perf_counter() - start
                 return color, luminance
@@ -515,7 +637,7 @@ class CudaCore:
 
             return cp.asarray(apply_core(rgb.get(), variant, params, numerics))
         h, w = rgb.shape[:2]
-        lum = cp.empty((h, w), cp.float32)
+        lum = self.buffer("luminance", (h, w), cp.float32)
         self.launch("luminance", lum.shape, rgb, lum, np.int32(h*w), np.int32(numerics.luminance_mode == "fractional"))
         reference = lum
         colors = rgb.astype(cp.float32)
@@ -526,7 +648,7 @@ class CudaCore:
             from .core import apply_core
 
             return cp.asarray(apply_core(rgb.get(), variant, params, numerics))
-        log_source = cp.empty_like(lum)
+        log_source = self.buffer("log-source", lum.shape, cp.float32)
         self.launch("log_source", lum.shape, lum, maximum, log_source, np.int32(h*w), np.float64(numerics.log_offset))
         pyramid = [log_source]
         minimum, levels = min(h, w), 0
@@ -537,7 +659,7 @@ class CudaCore:
             previous = pyramid[-1]
             pyramid.append(self.cubic(self.gaussian(previous), (previous.shape[0] // 2, previous.shape[1] // 2)))
         phi = self.phi(pyramid, variant, params, numerics)
-        rhs = cp.empty_like(lum)
+        rhs = self.buffer("divergence", lum.shape, cp.float32)
         self.launch("divergence", lum.shape, log_source, phi, rhs, np.int32(h), np.int32(w))
         solution = self.solver.solve_device(rhs, numerics.iterations, numerics.relaxation)
         if lighting_scale < 1.0:
@@ -553,10 +675,10 @@ class CudaCore:
                 coarse, max(1, round(numerics.iterations * lighting_scale)),
                 numerics.relaxation)
             solution += self.cubic(correction, (h, w))
-        mapped = cp.empty_like(lum)
+        mapped = self.buffer("exponential", lum.shape, cp.float32)
         self.launch("exponential", lum.shape, solution, mapped, np.int32(h*w), np.float32(numerics.log_offset))
         mapped = self.normalize(mapped, numerics)
-        output = cp.empty(rgb.shape, cp.uint8)
+        output = self.buffer("recombined", rgb.shape, cp.uint8)
         self.launch("recombine", lum.shape, rgb, colors, lum, reference, mapped, output, np.int32(h*w),
                     np.float32(params.saturation) / np.float32(100), np.int32(numerics.power_mode == "standard"),
                     np.float64(params.output_gamma), np.float64(params.tone_strength), np.float64(params.highlight_compression),
@@ -565,7 +687,7 @@ class CudaCore:
                     np.float32(params.fade) / np.float32(100))
         return output
 
-    def __call__(self, array, config, source_cleanup=None):
+    def __call__(self, array, config, source_cleanup=None, *, out=None):
         from .processing import enlargement_sizes, input_size, working_size
 
         cp = self.cp
@@ -574,8 +696,16 @@ class CudaCore:
                 return array.copy()
             if array.size > np.iinfo(np.int32).max:
                 raise GPUUnavailable("CUDA frames must fit int32 indexing")
+            self.optimized = config.video.gpu_buffer_reuse
+            self.capture_cleanup = config.video.gpu_cleanup_graph
+            self.solver.edge_halo = config.video.solver_halo
+            self.pending_history.clear()
             with cp.cuda.Device(self.solver.device), self.stream:
-                rgb = cp.asarray(array)
+                if self.optimized:
+                    rgb = self.buffer("input", array.shape, cp.uint8)
+                    rgb.set(np.ascontiguousarray(array), stream=self.stream)
+                else:
+                    rgb = cp.asarray(array)
                 size = (array.shape[1], array.shape[0])
                 if config.processing.resize:
                     destination = input_size(size, config.processing.effective_max_input_pixels)
@@ -601,6 +731,10 @@ class CudaCore:
                     self.launch("fade_rgb", rgb.shape, rgb, output, mixed, np.int32(rgb.size),
                                 np.float32(config.parameters.fade) / np.float32(100))
                     output = mixed
-                return output.get(stream=self.stream)
+                result = output.get(out=out, stream=self.stream)
+                for treatment, resets in self.pending_history:
+                    treatment.resets = int(resets)
+                self.pending_history.clear()
+                return result
         except Exception as error:
             raise GPUUnavailable(f"CUDA frame filtering failed: {error}") from error

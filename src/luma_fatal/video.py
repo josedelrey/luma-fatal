@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import asdict, replace
 from fractions import Fraction
 import hashlib
@@ -27,6 +27,7 @@ from .pipeline import process_frames
 from .prenoise import SourceNoise
 from .denoise import SourceDenoise
 from .processing import input_size
+from .video_io import PooledVideoIO, write_frame
 
 
 def _digest(path):
@@ -86,13 +87,13 @@ def _process(command, **kwargs):
                         pass
 
 
-def _check(process, log, operation):
+def _check(process, log, operation, *, allow_info=False):
     code = process.wait()
     log.seek(0, os.SEEK_END)
     length = log.tell()
     log.seek(max(0, length - 8192))
     details = log.read().decode("utf-8", errors="replace").strip()
-    if code or details:
+    if code or (details and not allow_info):
         raise ValueError(f"{operation} failed (exit {code}): {details}")
 
 
@@ -238,19 +239,60 @@ def _source_rate(stream, settings):
     raise ValueError("Missing video frame rate: specify --frame-rate or video.frame_rate")
 
 
+class _TimingAudit:
+    def __init__(self, stream, settings):
+        self.stream, self.settings = stream, settings
+        self.rate = _source_rate(stream, settings)
+        self.tick = _fraction(stream.get("time_base"), "time base")
+        self.color, _ = _resolve_color(stream, settings)
+        self.sar = _sample_aspect_ratio(stream.get("sample_aspect_ratio"))
+        self.count, self.first, self.previous = 0, None, None
+        self.variable = self.tick >= 1 / (2 * self.rate)
+        self.interlaced = stream.get("field_order") not in (None, "unknown", "progressive")
+
+    def add(self, fields):
+        try:
+            pts = int(fields["pts"]) * self.tick
+        except (KeyError, ValueError, TypeError) as error:
+            raise ValueError("Every video frame must have a presentation timestamp") from error
+        if self.previous is not None and pts <= self.previous:
+            raise ValueError("Video presentation timestamps must increase strictly")
+        if self.first is None:
+            self.first = pts
+        self.variable |= abs(pts - self.first - self.count / self.rate) > self.tick
+        duration = fields.get("duration", fields.get("pkt_duration"))
+        if duration not in (None, "N/A", "0"):
+            self.variable |= abs(int(duration) * self.tick - 1 / self.rate) > self.tick
+        if any(int(fields.get(key, 0)) != self.stream[key] for key in ("width", "height")):
+            raise ValueError("Changing video dimensions are not supported")
+        info = {**self.stream, **fields, "width": self.stream["width"], "height": self.stream["height"]}
+        if _resolve_color(info, self.settings)[0] != self.color or info.get("pix_fmt") != self.stream.get("pix_fmt"):
+            raise ValueError("Changing video color interpretation or pixel format is not supported")
+        if _sample_aspect_ratio(info.get("sample_aspect_ratio")) != self.sar:
+            raise ValueError("Changing video sample aspect ratio is not supported")
+        self.interlaced |= fields.get("interlaced_frame") == "1"
+        self.previous = pts
+        self.count += 1
+
+    def finish(self):
+        if not self.count:
+            raise ValueError("Input contains no decoded video frames")
+        rate = self.rate
+        if self.variable and self.settings.frame_rate == "auto":
+            try:
+                rate = _fraction(self.stream.get("r_frame_rate"), "nominal frame rate")
+            except ValueError:
+                pass
+        return rate, self.count, self.first, bool(self.variable), bool(self.interlaced)
+
+
 def _scan_timing(path, stream, executable, settings):
     """Scan source timing and reject changing geometry or color interpretation."""
-    rate = _source_rate(stream, settings)
-    tick = _fraction(stream.get("time_base"), "time base")
-    color, _ = _resolve_color(stream, settings)
-    sar = _sample_aspect_ratio(stream.get("sample_aspect_ratio"))
+    audit = _TimingAudit(stream, settings)
     entries = (
         "pts,duration,pkt_duration,width,height,pix_fmt,color_range,color_space,"
         "color_transfer,color_primaries,interlaced_frame,sample_aspect_ratio"
     )
-    count, first, previous = 0, None, None
-    variable = tick >= 1 / (2 * rate)
-    interlaced = stream.get("field_order") not in (None, "unknown", "progressive")
     command = [
         str(executable), "-v", "error", "-threads", "0",
         "-select_streams", str(stream["index"]),
@@ -259,49 +301,71 @@ def _scan_timing(path, stream, executable, settings):
     ]
     with _process(command, stdout=subprocess.PIPE, stdin=subprocess.DEVNULL) as (p, log):
         for raw in p.stdout:
-            fields = dict(
-                part.split("=", 1)
-                for part in raw.decode("utf-8").strip().split("|")
-                if "=" in part
-            )
-            if "width" not in fields:
-                continue
-            try:
-                pts = int(fields["pts"]) * tick
-            except (KeyError, ValueError) as error:
-                raise ValueError("Every video frame must have a presentation timestamp") from error
-            if previous is not None and pts <= previous:
-                raise ValueError("Video presentation timestamps must increase strictly")
-            if first is None:
-                first = pts
-            variable |= abs(pts - first - count / rate) > tick
-            duration = fields.get("duration", fields.get("pkt_duration"))
-            if duration not in (None, "N/A", "0"):
-                variable |= abs(int(duration) * tick - 1 / rate) > tick
-            if any(int(fields.get(key, 0)) != stream[key] for key in ("width", "height")):
-                raise ValueError("Changing video dimensions are not supported")
-            info = {**stream, **fields, "width": stream["width"], "height": stream["height"]}
-            if _resolve_color(info, settings)[0] != color or info.get("pix_fmt") != stream.get("pix_fmt"):
-                raise ValueError("Changing video color interpretation or pixel format is not supported")
-            if _sample_aspect_ratio(info.get("sample_aspect_ratio")) != sar:
-                raise ValueError("Changing video sample aspect ratio is not supported")
-            interlaced |= fields.get("interlaced_frame") == "1"
-            previous = pts
-            count += 1
+            fields = dict(part.split("=", 1) for part in raw.decode("utf-8").strip().split("|")
+                          if "=" in part)
+            if "width" in fields:
+                audit.add(fields)
         _check(p, log, "Video timing scan")
-    if not count:
-        raise ValueError("Input contains no decoded video frames")
-    if variable and settings.frame_rate == "auto":
-        # Prefer the nominal cadence over an average distorted by pauses or gaps.
-        try:
-            rate = _fraction(stream.get("r_frame_rate"), "nominal frame rate")
-        except ValueError:
-            pass
-    return rate, count, first, bool(variable), bool(interlaced)
+    return audit.finish()
+
+
+def _can_audit_decode(stream, settings):
+    # Conditional deinterlacing must preserve the decoder's pixel format.
+    supported = {f"yuv{sampling}p{depth}" for sampling in ("420", "422", "444")
+                 for depth in ("", "10le", "12le")}
+    if stream.get("pix_fmt") not in supported:
+        return False
+    try:
+        return (_fraction(stream.get("avg_frame_rate"), "average frame rate")
+                == _fraction(stream.get("r_frame_rate"), "nominal frame rate"))
+    except ValueError:
+        return False
+
+
+def _audit_decode_log(log, stream, settings):
+    import re
+
+    audit = _TimingAudit(stream, settings)
+    pending = None
+    time_base = False
+    log.seek(0)
+    for raw in log:
+        line = raw.decode("utf-8", errors="replace")
+        if "showinfo@source_audit" not in line:
+            continue
+        if "config in time_base:" in line:
+            value = re.search(r"time_base: ([0-9]+/[0-9]+)", line)
+            if value is None or Fraction(value[1]) != audit.tick:
+                raise ValueError("Decoder changed the source time base")
+            time_base = True
+        fields = dict(re.findall(r"\b(n|pts|duration|fmt|sar|s|i):\s*([^\s]+)", line))
+        if "n" in fields:
+            if pending is not None:
+                audit.add(pending)
+            if int(fields["n"]) != audit.count:
+                raise ValueError("Decoder reset the source frame sequence")
+            width, height = fields["s"].split("x")
+            pending = dict(pts=fields.get("pts"), duration=fields.get("duration"),
+                           width=width, height=height, pix_fmt=fields["fmt"],
+                           sample_aspect_ratio=fields["sar"].replace("/", ":"),
+                           interlaced_frame="0" if fields["i"] == "P" else "1")
+        if pending is not None and "color_range:" in line:
+            color = dict(re.findall(r"(color_range|color_space|color_primaries|color_trc):([^\s]+)", line))
+            if "color_trc" in color:
+                color["color_transfer"] = color.pop("color_trc")
+            pending.update(color)
+            audit.add(pending)
+            pending = None
+    if pending is not None:
+        audit.add(pending)
+    if not time_base:
+        raise ValueError("Decoder did not report source frame validation data")
+    return audit.finish()
 
 
 def _decode_command(executable, path, stream, deblock="off", deband="off", *,
-                    color=None, dimensions=None, rotation=0, interlaced=False, rate=None):
+                    color=None, dimensions=None, rotation=0, interlaced=False, rate=None,
+                    audit=False):
     color = color or {key: stream[key] for key in (
         "color_space", "color_transfer", "color_primaries", "color_range",
     )}
@@ -310,7 +374,7 @@ def _decode_command(executable, path, stream, deblock="off", deband="off", *,
         f"matrixin={color['color_space']}:transferin={color['color_transfer']}:"
         f"primariesin={color['color_primaries']}:rangein={source_range}"
     )
-    filters = []
+    filters = ["showinfo@source_audit=checksum=0"] if audit else []
     if interlaced:
         filters.append("bwdif=mode=send_frame:parity=auto:deint=interlaced")
     if rate is not None:
@@ -360,7 +424,8 @@ def _decode_command(executable, path, stream, deblock="off", deband="off", *,
     elif rotation == 270:
         filters.append("transpose=clock")
     return [
-        str(executable), "-v", "error", "-xerror", "-nostdin", "-noautorotate",
+        str(executable), "-v", "info" if audit else "error", "-nostats", "-xerror", "-nostdin", "-noautorotate",
+        *(["-copyts"] if audit else []),
         "-i", str(path), "-map", f"0:{stream['index']}", "-an", "-sn", "-dn",
         "-vf", ",".join(filters),
         "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1",
@@ -547,9 +612,15 @@ def process_video(
     stream = _probe(source, ffprobe)
     normalized, rotation, sar = _geometry(stream)
     color, assumptions = _resolve_color(stream, settings)
-    source_rate, source_count, first, variable, interlaced = _scan_timing(
-        source, stream, ffprobe, settings
-    )
+    audit_decode = settings.validation_mode == "stream" and _can_audit_decode(stream, settings)
+    if audit_decode:
+        source_rate = _source_rate(stream, settings)
+        source_count, first, variable = None, None, False
+        interlaced = stream.get("field_order") not in (None, "unknown", "progressive")
+    else:
+        source_rate, source_count, first, variable, interlaced = _scan_timing(
+            source, stream, ffprobe, settings
+        )
     rate = source_rate if settings.frame_rate == "auto" else Fraction(settings.frame_rate)
     resample = variable or rate != source_rate
     expected = None if resample else source_count
@@ -610,8 +681,9 @@ def process_video(
         temporary_meta = Path(directory) / "video.meta.json"
         decode = _decode_command(
             ffmpeg, source, stream, settings.deblock, settings.deband,
-            color=color, dimensions=normalized, rotation=rotation, interlaced=interlaced,
-            rate=rate if resample else None,
+            color=color, dimensions=normalized, rotation=rotation,
+            interlaced=interlaced or audit_decode,
+            rate=rate if resample or audit_decode else None, audit=audit_decode,
         )
         encode = _encode_command(ffmpeg, temporary, width, height, rate, encoding_settings)
         with _process(
@@ -627,25 +699,40 @@ def process_video(
                 )
                 if settings.decode_prefetch:
                     frames = _prefetched_frames(frames, settings.decode_prefetch)
-                with tqdm(
+                pool = (PooledVideoIO(
+                    decoder, encoder, (normalized[1], normalized[0], 3),
+                    (prepared[1], prepared[0], 3), (height, width, 3),
+                    settings.pipeline_depth,
+                    pinned=settings.pinned_frames and filter_solver is not None,
+                    processor=filter_solver,
+                ) if settings.pipeline_depth else None)
+                with (pool if pool is not None else nullcontext()), tqdm(
                     total=expected, desc="Filtering frames", unit="frame",
                     file=sys.stderr, dynamic_ncols=True, disable=not progress,
                 ) as bar:
                     try:
+                        if pool is not None:
+                            frames = pool.frames()
                         for frame in process_frames(frames, config=config, **cleanup_options):
                             if (frame.shape[1], frame.shape[0]) != prepared:
                                 raise ValueError("Processed video frame dimensions changed")
-                            frame = np.pad(
-                                frame,
-                                ((0, height - prepared[1]), (0, width - prepared[0]), (0, 0)),
-                                mode="edge",
-                            )
-                            data = frame.tobytes()
-                            encoder.stdin.write(data)
-                            processed_hash.update(data)
+                            if pool is not None:
+                                pool.submit(frame, processed_hash)
+                            else:
+                                if (width, height) != prepared:
+                                    frame = np.pad(
+                                        frame,
+                                        ((0, height - prepared[1]), (0, width - prepared[0]), (0, 0)),
+                                        mode="edge",
+                                    )
+                                write_frame(encoder.stdin, frame)
+                                processed_hash.update(memoryview(frame).cast("B"))
                             count += 1
                             bar.update(1)
-                        encoder.stdin.close()
+                        if pool is not None:
+                            pool.finish()
+                        else:
+                            encoder.stdin.close()
                     except OSError as error:
                         try:
                             encoder.stdin.close()
@@ -655,7 +742,13 @@ def process_video(
                         raise ValueError(
                             "Video encoder closed its input unexpectedly"
                         ) from error
-                _check(decoder, decode_log, "Video decoding")
+                _check(decoder, decode_log, "Video decoding", allow_info=audit_decode)
+                if audit_decode:
+                    source_rate, source_count, first, variable, interlaced = _audit_decode_log(
+                        decode_log, stream, settings
+                    )
+                    resample = variable or rate != source_rate
+                    expected = None if resample else source_count
                 _check(encoder, encode_log, "Video encoding")
         if not count:
             raise ValueError("Video preparation produced no frames: try a higher frame rate")
@@ -691,6 +784,7 @@ def process_video(
             frame_rate=str(rate),
             duration_seconds=float(count / rate),
             timing=dict(
+                validation="stream" if audit_decode else "scan",
                 source_first_pts_seconds=str(first),
                 source_frame_count=source_count,
                 source_variable_frame_rate=variable,
@@ -740,7 +834,7 @@ def process_video(
             implementation_sources_sha256={
                 name: _digest(Path(__file__).with_name(name)) for name in (
                     "video.py", "pipeline.py", "configuration.py", "cleanup.py",
-                    "processing.py", "core.py", "numerics.py", "prenoise.py", "denoise.py", "gpu.py", "gpu_core.py",
+                    "processing.py", "core.py", "numerics.py", "prenoise.py", "denoise.py", "gpu.py", "gpu_core.py", "video_io.py",
                 )
             },
             seconds=time.perf_counter() - start,
@@ -751,6 +845,15 @@ def process_video(
                 seconds=cleanup.seconds, guide_max_edge=384,
                 mode=settings.flat_cleanup_mode,
                 policy="soft source mask, guided floating RGB/luminance, no temporal RGB averaging",
+            )
+        if filter_solver is not None and filter_solver.cuda is not None:
+            cuda = filter_solver.cuda
+            record["filtering"]["optimizations"] = dict(
+                reusable_buffers=len(getattr(cuda, "buffers", {})),
+                cleanup_graphs=len(getattr(cuda, "cleanup_graphs", {})),
+                graph_fallbacks=list(getattr(cuda, "cleanup_graph_failures", {}).values()),
+                pipeline_depth=settings.pipeline_depth,
+                solver_halo=settings.solver_halo,
             )
         if denoiser is not None:
             record["source_denoise"] = dict(

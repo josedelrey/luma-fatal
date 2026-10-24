@@ -57,6 +57,8 @@ def load_contract(path: Path = CONTRACT):
             "calibration_cache": False, "gpu_iterations": None,
             "lighting_scale": 1.0,
             "decode_prefetch": 0, "pinned_frames": False,
+            "gpu_buffer_reuse": False, "gpu_cleanup_graph": False,
+            "solver_halo": 96, "pipeline_depth": 0, "validation_mode": "scan",
         }
         for key, default in added_video_defaults.items():
             if current["video"].pop(key) != default:
