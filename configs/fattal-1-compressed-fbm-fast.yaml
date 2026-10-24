@@ -1,0 +1,14 @@
+# Fattal 1 with fBm-like noise 0.75 and flat cleanup disabled.
+extends: fattal-1-compressed-fast.yaml
+video:
+  calibration_cache: true
+  gpu_iterations: 32
+  lighting_scale: 0.5
+  decode_prefetch: 0
+  pinned_frames: true
+  flat_cleanup: 0.0
+  flat_cleanup_mode: standard
+  pre_noise_rms: 0.75
+  pre_noise_kind: fbm
+  pre_noise_masked: true
+  pre_noise_seed: 20261017

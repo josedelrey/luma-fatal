@@ -18,7 +18,7 @@ from luma_fatal import Config, FilterParams, NumericsConfig, ProcessingConfig, a
 from luma_fatal.cleanup import SourceCleanup
 from luma_fatal.denoise import SourceDenoise
 from luma_fatal.cli import main
-from luma_fatal.video import VideoConfig, _decoded_frames, process_video
+from luma_fatal.video import VideoConfig, _decoded_frames, _prefetched_frames, process_video
 
 
 @pytest.mark.parametrize("cq,preset", [(0, "p1"), (18, "p4"), (51, "p7")])
@@ -428,6 +428,38 @@ def test_decoder_handles_partial_reads_and_truncated_frames():
         list(_decoded_frames(ShortReads(data[:-1]), 4, 3))
 
 
+def test_pinned_decoder_respects_exact_frame_boundaries(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+
+    class ShortReads(io.BytesIO):
+        def readinto(self, target):
+            return super().readinto(target[:7])
+
+    fake = SimpleNamespace(cuda=SimpleNamespace(
+        alloc_pinned_memory=lambda size: bytearray(size + 16)))
+    monkeypatch.setitem(sys.modules, "cupy", fake)
+    source = np.arange(72, dtype=np.uint8).tobytes()
+    frames = list(_prefetched_frames(
+        _decoded_frames(ShortReads(source), 4, 3, pinned=True), 2))
+    np.testing.assert_array_equal(np.stack(frames),
+                                  np.arange(72, dtype=np.uint8).reshape(2, 3, 4, 3))
+    with pytest.raises(ValueError, match="incomplete"):
+        list(_prefetched_frames(
+            _decoded_frames(ShortReads(source[:-1]), 4, 3, pinned=True), 2))
+
+
+@pytest.mark.parametrize("field,value", [
+    ("calibration_cache", 1), ("gpu_iterations", 0),
+    ("gpu_iterations", True), ("lighting_scale", 0.2),
+    ("lighting_scale", True), ("decode_prefetch", 17),
+    ("decode_prefetch", -1), ("pinned_frames", 1),
+])
+def test_fast_video_options_reject_invalid_values(field, value):
+    with pytest.raises(ValueError):
+        VideoConfig(**{field: value})
+
+
 @pytest.mark.parametrize("filter_name", ["fattal1", "fattal2"])
 @pytest.mark.parametrize(
     "shadow_softness,luminance_mode",
@@ -658,6 +690,9 @@ def test_cli_loads_config_and_applies_overrides(tmp_path, tools, capsys):
     assert record["configuration"]["parameters"]["fade"] == 100
     assert record["configuration"]["numerics"]["shadow_softness"] == 6
     assert record["video_configuration"] == {
+        "calibration_cache": False, "gpu_iterations": None,
+        "lighting_scale": 1.0,
+        "decode_prefetch": 0, "pinned_frames": False,
         "filter_backend": "cpu",
         "encoder": "libx264", "nvenc_cq": 18, "nvenc_preset": "p4",
         "crf": 23, "preset": "ultrafast", "deblock": "weak8", "deband": "off",

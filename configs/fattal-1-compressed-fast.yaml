@@ -1,0 +1,68 @@
+# Fattal 1 with smooth shadows and gentle debanding for compressed video.
+schema_version: 1
+filter: fattal1
+parameters:
+  alpha: 1
+  beta: 80
+  saturation: 100
+  noise: 0
+  fade: 0
+  output_gamma: 1.0
+  tone_strength: 100
+  highlight_compression: 0
+  black_level: 0
+  white_level: 100
+  vibrance: 0
+processing:
+  device_class: "medium"
+  max_edge: null
+  max_input_pixels: null
+  limit_input_pixels: false
+  resize: false
+  transparency: "reject"
+  blend_mode: "normal"
+  working_resampler: "nearest"
+image:
+  color_space: "srgb"
+  color_backend: "matrix_trc"
+  exif_orientation: "apply"
+  decode_sampling: true
+output:
+  format: "jpeg"
+  jpeg_quality: 100
+  jpeg_subsampling: "420"
+  embed_icc: false
+  jpeg_background: null
+numerics:
+  iterations: 80
+  relaxation: 1.9
+  pyramid_min_size: 32
+  normalization_low: 0.001
+  normalization_high: 0.995
+  normalization_floor: 0.0001
+  gradient_threshold: 0.0001
+  log_offset: 0.01
+  shadow_threshold: 6
+  shadow_softness: 6
+  luminance_mode: rounded
+  detail_level: 0
+  power_mode: "approximate"
+video:
+  calibration_cache: true
+  gpu_iterations: 32
+  lighting_scale: 0.5
+  decode_prefetch: 0
+  pinned_frames: true
+  encoder: h264_nvenc
+  filter_backend: auto
+  nvenc_cq: 18
+  nvenc_preset: p4
+  crf: 18
+  preset: medium
+  deblock: off
+  deband: gentle
+  denoise: 0.0
+  flat_cleanup: 0.75
+  flat_cleanup_mode: standard
+  flat_cleanup_coarse_strength: 1.0
+  flat_cleanup_sigma: 1.2
