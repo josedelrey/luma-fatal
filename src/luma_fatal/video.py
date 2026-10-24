@@ -252,7 +252,8 @@ def _scan_timing(path, stream, executable, settings):
     variable = tick >= 1 / (2 * rate)
     interlaced = stream.get("field_order") not in (None, "unknown", "progressive")
     command = [
-        str(executable), "-v", "error", "-select_streams", str(stream["index"]),
+        str(executable), "-v", "error", "-threads", "0",
+        "-select_streams", str(stream["index"]),
         "-show_frames", "-show_entries", f"frame={entries}",
         "-of", "compact=p=0", str(path),
     ]
