@@ -58,9 +58,11 @@ The [configs/](../configs/) directory contains all presets, with a matching
 `fattal-2` version for each `fattal-1` family.
 All bundled YAML presets use `numerics.shadow_softness: 6`, equivalent to
 `--shadow-softness 6`. API and CLI runs without a config keep the default of `0`.
-Each preset has a `-fast.yaml` counterpart. The fast copies keep the original
-filtering recipe and enable reusable CUDA calibration and pinned input frames.
-They require the optional GPU dependencies to realize those speedups. CPU
+Each preset has a `-fast.yaml` counterpart for sustained video throughput. The
+fast copies retain 80 solver iterations and full-resolution lighting, reuse GPU
+buffers, capture compatible cleanup operations, and overlap decoding and encoding
+through three pinned frame slots. Compatible inputs are validated during the
+main decode. They require the optional GPU dependencies for GPU speedups. CPU
 fallback produces the original preset result.
 
 | Preset | Purpose |
@@ -211,8 +213,13 @@ requirements, input preparation, and examples. Output is silent SDR H.264 MP4.
 | `video.calibration_cache` | `false` | Reuse compatible CUDA calibration across runs. A cache hit still compares the first GPU frame with the CPU reference. The cache is stored under `XDG_CACHE_HOME/luma-fatal` or the user's default cache directory. |
 | `video.gpu_iterations` | `null` | `null` uses `numerics.iterations` on both backends. A positive integer overrides only the GPU solver, leaving CPU fallback unchanged. Fast presets explicitly use the reference value `80`. |
 | `video.lighting_scale` | `1.0` | Fraction `0.25–1`. Below `1`, the GPU estimates the remaining lighting correction on a smaller grid and applies it at full resolution. Fast presets retain the reference value `1.0`. CPU processing retains the reference correction. |
-| `video.decode_prefetch` | `0` | Integer `0–16`. Queue that many decoded frames in a background reader. Workload dependent and disabled in the fast presets because it slowed the tested clip when combined with pinned frames. |
+| `video.decode_prefetch` | `0` | Integer `0–16`. Simple decoded-frame prefetch when `pipeline_depth` is `0`. Fast presets keep it off and use reusable pipeline slots instead. |
 | `video.pinned_frames` | `false` | Decode RGB frames into pinned host memory for GPU upload. Falls back to ordinary buffers if pinning is unavailable. Fast presets enable it. |
+| `video.gpu_buffer_reuse` | `false` | Reuse GPU fields and keep working cleanup history on the device. Asynchronous host checkpoints complete with each output frame so CPU fallback retains its history. Fast presets enable it. |
+| `video.gpu_cleanup_graph` | `false` | With buffer reuse, capture compatible cleanup operations in a CUDA graph. Failed capture uses ordinary CUDA operations and records diagnostics. Fast presets enable it. |
+| `video.solver_halo` | `96` | Integer `32–96`. Right-edge dependency rows retained by the GPU solver. Fast presets use `64` to reduce repeated boundary work. Solver iterations and resolution remain unchanged. |
+| `video.pipeline_depth` | `0` | Integer `0–8`. `0` uses serial frame I/O. A positive value allocates that many reusable input/output slots and overlaps decoding, filtering, hashing, and encoding. Fast presets use `3`. |
+| `video.validation_mode` | `scan` | `scan` validates with a separate preflight. `stream` audits original decoded frame timestamps, dimensions, color, and aspect ratio during the main decode. Inputs with differing nominal and average rates or unsupported pixel formats use the preflight. Streaming supports planar YUV420/422/444 at 8, 10, or 12 bits. Validation failure publishes no output. Fast presets select `stream`. |
 | `video.crf` | `18` | Integer `0–51`, used only by `libx264`. Lower values generally give higher quality and larger files. `0` requests lossless encoding, but input preparation and pixel-format conversions still apply. |
 | `video.preset` | `medium` | Used only by `libx264`: `ultrafast`, `superfast`, `veryfast`, `faster`, `fast`, `medium`, `slow`, `slower`, or `veryslow`. Slower presets spend more time on compression. |
 | `video.nvenc_cq` | `18` | Integer `0–51`, used only by `h264_nvenc` with quality-targeted variable bitrate and no fixed bitrate target. Lower positive values give higher quality. `0` selects automatic quality, rather than lossless encoding. CQ and CRF values are not equivalent across encoders. |

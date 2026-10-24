@@ -148,8 +148,11 @@ must meet all of these limits, measured on channel values from 0 to 255:
 - 99th-percentile absolute error at most 2 and maximum error at most 12.
 
 Every bundled preset has a `-fast.yaml` copy. These copies retain the reference
-lighting solve and enable calibration reuse and pinned input frames. They
-produce the same filtered RGB as their original GPU presets. The optional
+80-iteration lighting solve and full resolution. They reuse GPU fields, capture
+compatible cleanup operations in a CUDA graph, and overlap decoding and encoding
+with three reusable pinned frame slots. Working cleanup history stays on the
+GPU, with host checkpoints for CPU fallback. Right-edge dependency work uses a
+64-row halo instead of 96. The optional
 `--gpu-iterations 32 --lighting-scale 0.5` combination uses a coarse residual
 correction. On the retained 1080p clip it improved GPU runtime but changed
 some channels by up to 13 levels, so it is not enabled in the fast copies. Its
@@ -157,8 +160,19 @@ first-frame quality gate allows mean absolute error at most 1, root mean square
 error at most 1.5, 99th-percentile error at most 4, and maximum error at most
 16. An input exceeding these limits uses the CPU reference. The fast copies
 also enable pinned input frames.
-Decoded-frame prefetch is configurable, but remains off in the fast copies
-because it did not improve the measured pipeline on the tested machine.
+Simple decoded-frame prefetch is configurable, but remains off in the fast
+copies. The reusable-slot pipeline handles read-ahead without allocating pinned
+buffers in the decoder worker. Frames and cleanup history advance in source
+order. Encoder failures and cancellation stop both workers before releasing
+their buffers.
+
+Fast copies also request validation during decoding. FFmpeg reports original
+frame metadata before deinterlacing, cadence conversion, or source preparation.
+The adapter audits that metadata before publishing the temporary output. Inputs
+whose nominal and average rates disagree retain the separate preflight to
+preserve cadence selection. RGB and other pixel formats outside planar
+YUV420/422/444 at 8, 10, or 12 bits also use the preflight to preserve color
+conversion. Original presets retain their existing scan policy.
 
 `video.calibration_cache: true` stores compatible CUDA selection records across
 runs. A cache hit uses one measured CPU/GPU pair instead of two and still checks
@@ -179,6 +193,21 @@ section records `scope: frame_pipeline`, the actual backend, GPU, selection
 reason, synchronized frame timings, calibration time, calibration RGB error
 metrics, and CPU/CUDA frame counts. Counts cover every output frame. GPU filtering
 and NVENC encoding can be selected independently.
+
+Compare complete runs and their filtered RGB fingerprints with:
+
+```bash
+uv run python experiments/benchmark_video_throughput.py \
+  --input local_inputs/input.mp4 \
+  --config configs/fattal-1-compressed.yaml \
+  --candidate configs/fattal-1-compressed-fast.yaml \
+  --output outputs/throughput-comparison --repeat 2
+```
+
+The output directory must be new. The report includes total runtime, steady
+filtering time, and whether all pre-encode RGB hashes match. Add
+`--cpu-reference` to compare against CPU filtering. Timing includes preparation,
+calibration, and encoding, so longer inputs give a better throughput comparison.
 
 ## Compressed sources
 
