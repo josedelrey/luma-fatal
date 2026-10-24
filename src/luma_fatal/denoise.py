@@ -7,14 +7,14 @@ import numpy as np
 from scipy.ndimage import convolve1d, uniform_filter
 
 
-def _noise_sigma(rgb):
+def _noise_sigma(rgb, backend=np):
     """Estimate RGB noise from diagonal differences that cancel planar shading."""
     if min(rgb.shape[:2]) < 2:
-        return np.zeros(3, np.float32)
+        return backend.zeros(3, backend.float32)
     diagonal = (rgb[1:, 1:] - rgb[1:, :-1]
                 - rgb[:-1, 1:] + rgb[:-1, :-1])
     # The four independent samples give twice the source standard deviation.
-    return np.median(np.abs(diagonal), axis=(0, 1)) / np.float32(1.3489795)
+    return backend.median(backend.abs(diagonal), axis=(0, 1)) / backend.float32(1.3489795)
 
 
 def _bands():
@@ -38,37 +38,39 @@ _BANDS = _bands()
 _LUMA = np.array([4899, 9617, 1868], np.float32) / np.float32(16384 * 255)
 
 
-def denoise_rgb(rgb):
+def denoise_rgb(rgb, *, backend=np, filters=None):
     """Shrink noise-dominated detail while retaining locally coherent structure.
 
     Undecimated bands avoid block boundaries and retain full pixel alignment.
     Each channel uses its estimated noise floor. Local band energy retains
     edges and texture above that floor without applying a smooth-region mask.
     """
-    color = rgb.astype(np.float32)
-    sigma = _noise_sigma(color)
-    if not np.any(sigma):
+    convolve, uniform = filters or (convolve1d, uniform_filter)
+    color = rgb.astype(backend.float32)
+    sigma = _noise_sigma(color, backend)
+    if not backend.any(sigma):
         return color, sigma
     coarse = color
-    result = np.zeros_like(color)
+    result = backend.zeros_like(color)
     for kernel, energy in _BANDS:
-        smooth = convolve1d(coarse, kernel, axis=0, mode="reflect")
-        smooth = convolve1d(smooth, kernel, axis=1, mode="reflect")
+        kernel = backend.asarray(kernel)
+        smooth = convolve(coarse, kernel, axis=0, mode="reflect")
+        smooth = convolve(smooth, kernel, axis=1, mode="reflect")
         detail = coarse - smooth
         # Correlated grain can grow at coarser scales, unlike white noise.
         # Estimate each band separately so compressed/resampled noise is caught.
-        center = np.median(detail, axis=(0, 1))
+        center = backend.median(detail, axis=(0, 1))
         band_sigma = (
-            np.median(np.abs(detail - center), axis=(0, 1)) / np.float32(0.67448975)
+            backend.median(backend.abs(detail - center), axis=(0, 1)) / backend.float32(0.67448975)
         )
-        noise = np.maximum(sigma * sigma * energy, band_sigma * band_sigma)
-        activity = uniform_filter(detail * detail, size=(5, 5, 1), mode="reflect")
-        gain = np.maximum(activity - np.float32(1.5) * noise, 0) / np.maximum(
-            activity, np.maximum(noise, np.float32(1e-12)),
+        noise = backend.maximum(sigma * sigma * energy, band_sigma * band_sigma)
+        activity = uniform(detail * detail, size=(5, 5, 1), mode="reflect")
+        gain = backend.maximum(activity - backend.float32(1.5) * noise, 0) / backend.maximum(
+            activity, backend.maximum(noise, backend.float32(1e-12)),
         )
         result += detail * gain
         coarse = smooth
-    return np.clip(result + coarse, 0, 255), sigma
+    return backend.clip(result + coarse, 0, 255), sigma
 
 
 class SourceDenoise:

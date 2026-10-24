@@ -1,4 +1,4 @@
-"""Optional CUDA acceleration for the reference solver's paired sweeps."""
+"""Optional CUDA kernels and measured selection with reference CPU fallback."""
 
 from __future__ import annotations
 
@@ -61,6 +61,31 @@ extern "C" __global__ void right_edge(
         __syncthreads();
         if (y < h) u[y * w + w - 1] = old[t];
         __syncthreads();
+    }
+}
+extern "C" __global__ void parallel_edge(
+    const float* rhs, float* u, int h, int w, float ow, float nw
+) {
+    extern __shared__ float storage[];
+    float* r=storage; float* old=r+h; float* left=old+h;
+    for (int y=threadIdx.x;y<h;y+=blockDim.x) {
+        int i=y*w+w-1;
+        r[y]=rhs[i]; old[y]=u[i]; left[y]=u[i-1];
+    }
+    __syncthreads();
+    for (int y=threadIdx.x+1;y<h;y+=blockDim.x) {
+        // The dependency contracts by at most 2/3 per row. A 96-row halo
+        // limits discarded history below float32 precision at normal scales.
+        int start=max(1,y-96);
+        float above=start==1 ? 0.0f : old[start-1];
+        for (int j=start;j<=y;++j) {
+            float v=r[j]-above;
+            if (j<h-1) {
+                v=v-old[j+1]; v=v-left[j]; v=v/-3.0f;
+            } else { v=v-left[j]; v=v*-0.5f; }
+            above=old[j]*ow+v*nw;
+        }
+        u[y*w+w-1]=above;
     }
 }
 '''
@@ -196,7 +221,8 @@ class CudaSolver:
 
     Interior checkerboard updates are independent within each half-sweep.
     The right column advances serially after them, preserving the reference's
-    double boundary updates. Transfers are included in every call.
+    double boundary updates. Frame processing can opt into a 96-row parallel
+    dependency halo. The host interface includes transfers in every call.
     """
 
     def __init__(self):
@@ -212,6 +238,9 @@ class CudaSolver:
             module = cp.RawModule(code=_SOURCE, options=("--fmad=false",))
             self.sweep = module.get_function("sweep")
             self.edge = module.get_function("right_edge")
+            self.parallel_edge_kernel = module.get_function("parallel_edge")
+            self.parallel_edge = False
+            self.shared_bytes = properties["sharedMemPerBlock"]
             self.stream = cp.cuda.Stream(non_blocking=True)
             self.key = None
             self.graph = None
@@ -225,7 +254,7 @@ class CudaSolver:
         cp = self.cp
         try:
             with cp.cuda.Device(self.device), self.stream:
-                key = (rhs.shape, iterations, relaxation)
+                key = (rhs.shape, iterations, relaxation, self.parallel_edge)
                 if self.key != key:
                     self._prepare(key)
                 self.rhs.set(np.ascontiguousarray(rhs, dtype=np.float32), stream=self.stream)
@@ -240,7 +269,7 @@ class CudaSolver:
         The caller must enqueue preceding and following work on self.stream.
         The returned buffer is reused by the next solve.
         """
-        key = (rhs.shape, iterations, relaxation)
+        key = (rhs.shape, iterations, relaxation, self.parallel_edge)
         if self.key != key:
             self._prepare(key)
         self.cp.copyto(self.rhs, rhs)
@@ -249,7 +278,7 @@ class CudaSolver:
 
     def _prepare(self, key):
         cp = self.cp
-        shape, iterations, relaxation = key
+        shape, iterations, relaxation, parallel_edge = key
         height, width = shape
         if min(shape) < 2 or height * width > np.iinfo(np.int32).max:
             raise GPUUnavailable("CUDA solver requires a field of at least 2 by 2 within int32 indexing")
@@ -258,16 +287,21 @@ class CudaSolver:
         arguments = (self.rhs, self.solution, np.int32(height), np.int32(width))
         weights = (np.float32(1 - relaxation), np.float32(relaxation))
         blocks = ((height * width + 255) // 256,)
+        edge = self.edge
+        edge_options = {}
+        if parallel_edge and height * 3 * 4 <= self.shared_bytes:
+            edge = self.parallel_edge_kernel
+            edge_options = dict(shared_mem=height * 3 * 4)
         # Compile all kernels and initialize fill before stream capture.
         self.sweep(blocks, (256,), (*arguments, np.int32(1), *weights))
-        self.edge((1,), (256,), (*arguments, *weights))
+        edge((1,), (256,), (*arguments, *weights), **edge_options)
         self.stream.synchronize()
         self.stream.begin_capture()
         self.solution.fill(0)
         for _ in range(iterations):
             for color in (1, 0):
                 self.sweep(blocks, (256,), (*arguments, np.int32(color), *weights))
-                self.edge((1,), (256,), (*arguments, *weights))
+                edge((1,), (256,), (*arguments, *weights), **edge_options)
         self.graph = self.stream.end_capture()
         self.key = key
 
@@ -477,8 +511,10 @@ class AdaptiveFrameProcessor:
 
                 self.cuda = CudaCore()
                 self.record.update(device=self.cuda.name, cupy_version=self.cuda.version)
-            # Warm both paths before measuring, restoring mask history every time.
-            self.cpu(frame)
+            # Compile CPU kernels on a small nonblack probe before full-frame
+            # timing. Its history is discarded like every calibration trial.
+            probe = np.random.default_rng(0).integers(0, 256, (64, 64, 3), np.uint8)
+            self.cpu(probe)
             _restore_treatment(snapshot)
             self.cuda(frame, self.config, self.source_cleanup)
             _restore_treatment(snapshot)

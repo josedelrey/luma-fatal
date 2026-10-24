@@ -86,10 +86,10 @@ luma-fatal video local_inputs/input.mp4 outputs/stylized.mp4 \
   --config configs/fattal-1.yaml --progress
 ```
 
-NVENC accelerates output compression. The [optional CUDA solver](#gpu-filtering)
-can separately accelerate Fattal filtering. Decoding, color conversion, source
-treatments, resizing, and color reconstruction run on the CPU. The total speed
-improvement depends on where your workload spends its time.
+NVENC accelerates output compression. The [optional CUDA backend](#gpu-filtering)
+can separately accelerate filtering, source treatments, and resizing. Input
+validation, decoding, FFmpeg color conversion, and optional deblocking/debanding
+remain on the CPU. Total speed depends on the input codec and processing settings.
 
 NVENC defaults to target quality `18` and preset `p4`. Use `--nvenc-cq` to select
 quality from `1` to `51`, with lower values giving higher quality. `0` selects
@@ -113,11 +113,15 @@ encoding starts still abort the run and publish no video or sidecar.
 
 ## GPU filtering
 
-The experimental CUDA backend accelerates the iterative Poisson solver while
-retaining the existing source preparation, attenuation, color, and resize paths.
-It preserves the reference solver's checkerboard sweeps and serial right-edge
-updates. Results should be very close, with small floating-point differences
-permitted across GPUs and software versions. Image commands retain CPU filtering.
+The experimental CUDA backend keeps luminance conversion, source cleanup,
+attenuation pyramids, the Poisson solver, normalization, color reconstruction,
+and resizing on the GPU. Optional denoising, multiscale cleanup, and source noise
+also run there. Seeded noise is generated once on the CPU to retain its pattern.
+Only RGB8 frames and small cleanup history cross the host/device boundary during
+standard cleanup. The solver retains checkerboard sweeps and both right-edge
+updates. Its parallel edge calculation uses a 96-row dependency halo, with the serial implementation
+retained for columns that exceed shared-memory capacity. Small numerical
+differences are permitted, while image commands retain the CPU reference.
 
 Install the optional GPU dependencies and run a video:
 
@@ -132,24 +136,30 @@ Linux or Windows with a compatible NVIDIA driver. A separate CUDA Toolkit
 installation is unnecessary. See [CuPy installation](https://docs.cupy.dev/en/stable/install.html).
 CPU processing and NVENC encoding do not require this extra.
 
-All bundled YAML presets use `video.filter_backend: auto`. For each solver
-geometry and iteration count, automatic mode warms both implementations and
-compares two CPU and GPU timings, including GPU transfers. It selects CUDA only
-with at least a 20 percent measured solver improvement, close numerical agreement,
-and enough remaining frames to recover the measured setup cost. Small solver
-fields and known clips shorter than eight frames skip GPU initialization.
-This calibration adds a one-time startup cost. It cannot guarantee a speedup for
-every clip or changing machine load. A GPU failure or three consecutive solver
-calls slower than the calibrated CPU time switches subsequent frames to the CPU.
+All bundled YAML presets use `video.filter_backend: auto`. Automatic mode warms
+both complete frame paths and compares two CPU and GPU timings, including
+transfers and source treatments. It selects CUDA with at least a 20 percent
+measured improvement and enough remaining frames to recover setup cost with a
+25 percent margin. Known clips shorter than eight frames and working images
+below 65,536 pixels skip initialization. RGB agreement on the calibration frame
+must meet all of these limits, measured on channel values from 0 to 255:
 
-Use `--filter-backend cpu` for the reference solver, or `--filter-backend auto`
-to enable automatic selection without a preset. Missing optional dependencies
-or unavailable hardware also fall back to the CPU. Selection messages go to
-stderr. The sidecar's `filtering` section records the actual backend, GPU,
-selection reason, solver timings, calibration time, and CPU/CUDA frame counts.
-The counts cover frames that invoke the solver, excluding Fade 100 and black
-frames that bypass it. GPU filtering and NVENC encoding can be selected
-independently.
+- Mean absolute error at most 0.25 and root mean square error at most 0.75.
+- 99th-percentile absolute error at most 2 and maximum error at most 12.
+
+Calibration has a one-time startup cost, including first-use kernel compilation.
+It cannot guarantee a speedup for every clip or changing machine load. A GPU
+failure or three consecutive calls slower than calibrated CPU frame processing
+switches to the CPU. Calibration and failed calls restore source-mask history
+before retrying, so each source frame advances that history once.
+
+Use `--filter-backend cpu` for reference processing or `--filter-backend auto`
+to enable selection without a preset. Missing optional dependencies or hardware
+also use the CPU. Selection messages go to stderr. The sidecar's `filtering`
+section records `scope: frame_pipeline`, the actual backend, GPU, selection
+reason, synchronized frame timings, calibration time, calibration RGB error
+metrics, and CPU/CUDA frame counts. Counts cover every output frame. GPU filtering
+and NVENC encoding can be selected independently.
 
 ## Compressed sources
 
