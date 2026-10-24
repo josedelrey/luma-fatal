@@ -87,7 +87,8 @@ def _settings(args: argparse.Namespace) -> Config:
             "frame_rate", "input_color", "input_range",
             "encoder", "nvenc_cq", "nvenc_preset",
             "filter_backend", "calibration_cache", "gpu_iterations", "lighting_scale",
-            "decode_prefetch", "pinned_frames",
+            "decode_prefetch", "pinned_frames", "gpu_buffer_reuse", "gpu_cleanup_graph",
+            "solver_halo", "pipeline_depth", "validation_mode",
         )
         if getattr(args, name, None) is not None
     }
@@ -264,6 +265,16 @@ def main(argv: list[str] | None = None) -> None:
                        help="Decoded frames to queue ahead, 0 to 16")
     video.add_argument("--pinned-frames", action=argparse.BooleanOptionalAction,
                        default=None, help="Decode into pinned host buffers for GPU transfer")
+    video.add_argument("--gpu-buffer-reuse", action=argparse.BooleanOptionalAction,
+                       default=None, help="Reuse GPU buffers and retain device cleanup history")
+    video.add_argument("--gpu-cleanup-graph", action=argparse.BooleanOptionalAction,
+                       default=None, help="Capture compatible cleanup operations in a CUDA graph")
+    video.add_argument("--solver-halo", type=int, default=None,
+                       help="GPU boundary dependency rows, 32 to 96")
+    video.add_argument("--pipeline-depth", type=int, default=None,
+                       help="Reusable decode/filter/encode slots, 0 disables overlap")
+    video.add_argument("--validation-mode", choices=("scan", "stream"), default=None,
+                       help="Validate with a separate scan or during compatible decoding")
     video.add_argument("--preset", default=None, help="libx264 speed preset")
     video.add_argument(
         "--nvenc-cq", type=int, default=None,

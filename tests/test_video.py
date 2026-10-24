@@ -3,6 +3,7 @@
 from fractions import Fraction
 import hashlib
 import io
+from dataclasses import replace
 import json
 import os
 from pathlib import Path
@@ -449,11 +450,64 @@ def test_pinned_decoder_respects_exact_frame_boundaries(monkeypatch):
             _decoded_frames(ShortReads(source[:-1]), 4, 3, pinned=True), 2))
 
 
+@pytest.mark.parametrize("offset,rate,vf", [
+    (0, "25", None), (3, "25", None), (0, "30000/1001", None),
+    (0, "25", "setfield=tff"),
+])
+def test_stream_validation_and_pooled_io_preserve_reference_rgb(tmp_path, tools, offset, rate, vf):
+    source = make_clip(tmp_path / "source.mkv", tools, count=9, offset=offset, rate=rate, vf=vf)
+    config = Config(parameters=FilterParams(fade=100))
+    reference = process_video(source, tmp_path / "reference.mp4", config=config,
+                              ffmpeg=tools[0], ffprobe=tools[1])
+    config = replace(config, video=replace(config.video, validation_mode="stream", pipeline_depth=3))
+    candidate = process_video(source, tmp_path / "candidate.mp4", config=config,
+                              ffmpeg=tools[0], ffprobe=tools[1])
+    assert candidate["processed_rgb_sha256"] == reference["processed_rgb_sha256"]
+    assert candidate["frame_count"] == reference["frame_count"]
+    for key in ("source_first_pts_seconds", "source_frame_count", "source_variable_frame_rate"):
+        assert candidate["timing"][key] == reference["timing"][key]
+    assert candidate["timing"]["validation"] == "stream"
+
+
+@pytest.mark.parametrize("change,match", [
+    ({"pts": "0"}, "increase strictly"),
+    ({"pts": "NOPTS"}, "presentation timestamp"),
+    ({"s": "49x36"}, "Changing video dimensions"),
+    ({"color_range": "pc"}, "Changing video color"),
+    ({"sar": "2/1"}, "Changing video sample aspect"),
+    ({"fmt": "yuv444p"}, "Changing video color"),
+])
+def test_decode_audit_rejects_changing_or_ambiguous_frames(change, match):
+    from luma_fatal.video import _audit_decode_log
+
+    stream = dict(width=48, height=36, pix_fmt="yuv420p", color_space="bt709",
+                  color_transfer="bt709", color_primaries="bt709", color_range="tv",
+                  time_base="1/1000", avg_frame_rate="25", r_frame_rate="25",
+                  sample_aspect_ratio="1:1")
+    lines = ["[showinfo@source_audit] config in time_base: 1/1000, frame_rate: 25/1"]
+    for index in range(2):
+        fields = dict(n=str(index), pts=str(index * 40), duration="40", fmt="yuv420p",
+                      sar="1/1", s="48x36", i="P", color_range="tv",
+                      color_space="bt709", color_primaries="bt709", color_trc="bt709")
+        if index:
+            fields.update(change)
+        lines.append("[showinfo@source_audit] " + " ".join(f"{k}: {v}" for k, v in fields.items()
+                                                         if not k.startswith("color_")))
+        lines.append("[showinfo@source_audit] " + " ".join(f"{k}:{v}" for k, v in fields.items()
+                                                         if k.startswith("color_")))
+    with pytest.raises(ValueError, match=match):
+        _audit_decode_log(io.BytesIO("\n".join(lines).encode()), stream, VideoConfig())
+
+
 @pytest.mark.parametrize("field,value", [
     ("calibration_cache", 1), ("gpu_iterations", 0),
     ("gpu_iterations", True), ("lighting_scale", 0.2),
     ("lighting_scale", True), ("decode_prefetch", 17),
     ("decode_prefetch", -1), ("pinned_frames", 1),
+    ("gpu_buffer_reuse", 1), ("gpu_cleanup_graph", 1),
+    ("solver_halo", 31), ("solver_halo", 97), ("solver_halo", True),
+    ("pipeline_depth", -1), ("pipeline_depth", 9), ("pipeline_depth", True),
+    ("validation_mode", "unchecked"),
 ])
 def test_fast_video_options_reject_invalid_values(field, value):
     with pytest.raises(ValueError):
@@ -693,6 +747,8 @@ def test_cli_loads_config_and_applies_overrides(tmp_path, tools, capsys):
         "calibration_cache": False, "gpu_iterations": None,
         "lighting_scale": 1.0,
         "decode_prefetch": 0, "pinned_frames": False,
+        "gpu_buffer_reuse": False, "gpu_cleanup_graph": False,
+        "solver_halo": 96, "pipeline_depth": 0, "validation_mode": "scan",
         "filter_backend": "cpu",
         "encoder": "libx264", "nvenc_cq": 18, "nvenc_preset": "p4",
         "crf": 23, "preset": "ultrafast", "deblock": "weak8", "deband": "off",
@@ -988,7 +1044,8 @@ def test_interlaced_video_is_deinterlaced_before_filtering(tmp_path, tools):
 
 
 @pytest.mark.parametrize("pixel_format", ["yuv444p10le", "yuv444p12le"])
-def test_high_bit_depth_sdr_converts_before_filtering(tmp_path, tools, pixel_format):
+@pytest.mark.parametrize("validation_mode", ["scan", "stream"])
+def test_high_bit_depth_sdr_converts_before_filtering(tmp_path, tools, pixel_format, validation_mode):
     # FFV1 retains 12-bit data, which the local H.264 encoder cannot encode.
     original = make_clip(tmp_path / "original.mkv", tools)
     source = tmp_path / "deep.mkv"
@@ -1002,10 +1059,12 @@ def test_high_bit_depth_sdr_converts_before_filtering(tmp_path, tools, pixel_for
         expected.update(np.pad(frame, ((0, 1), (0, 1), (0, 0)), mode="edge").tobytes())
     record = process_video(
         source, tmp_path / "deep.mp4", config=Config(parameters=FilterParams(fade=100)),
+        video_config=VideoConfig(validation_mode=validation_mode),
         ffmpeg=tools[0], ffprobe=tools[1],
     )
     assert record["processed_rgb_sha256"] == expected.hexdigest()
     assert record["color_policy"]["input"]["pix_fmt"] == pixel_format
+    assert record["timing"]["validation"] == validation_mode
 
 
 @pytest.mark.parametrize("transfer", ["smpte2084", "arib-std-b67"])
@@ -1052,7 +1111,10 @@ def test_hdr_tone_mapping_produces_sdr_and_records_policy(tmp_path, tools, monke
 
 
 @pytest.mark.parametrize("deband", ["off", "gentle"])
-def test_untagged_rgb_assumes_srgb_and_preserves_values(tmp_path, tools, monkeypatch, deband):
+@pytest.mark.parametrize("validation_mode", ["scan", "stream"])
+def test_untagged_rgb_assumes_srgb_and_preserves_values(
+    tmp_path, tools, monkeypatch, deband, validation_mode,
+):
     import luma_fatal.video as video
 
     values = np.array([[20, 80, 160], [200, 150, 60], [100, 100, 100]], np.uint8)
@@ -1071,7 +1133,8 @@ def test_untagged_rgb_assumes_srgb_and_preserves_values(tmp_path, tools, monkeyp
 
     monkeypatch.setattr(video, "process_frames", observe)
     record = process_video(
-        source, tmp_path / "rgb.mp4", video_config=VideoConfig(deband=deband),
+        source, tmp_path / "rgb.mp4",
+        video_config=VideoConfig(deband=deband, validation_mode=validation_mode),
         ffmpeg=tools[0], ffprobe=tools[1],
     )
     np.testing.assert_allclose(np.array(observed), frames, atol=1)
@@ -1080,6 +1143,7 @@ def test_untagged_rgb_assumes_srgb_and_preserves_values(tmp_path, tools, monkeyp
         "color_primaries": "bt709", "color_range": "pc",
     }
     assert record["color_policy"]["assumptions"]["color_transfer"] == "iec61966-2-1"
+    assert record["timing"]["validation"] == "scan"
 
 
 @pytest.mark.parametrize("height,profile", [(480, "smpte170m"), (576, "bt470bg"), (720, "bt709")])

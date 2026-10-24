@@ -330,6 +330,11 @@ class VideoConfig:
     lighting_scale: float = 1.0
     decode_prefetch: int = 0
     pinned_frames: bool = False
+    gpu_buffer_reuse: bool = False
+    solver_halo: int = 96
+    pipeline_depth: int = 0
+    gpu_cleanup_graph: bool = False
+    validation_mode: str = "scan"
 
     def __post_init__(self):
         _choice("video filter_backend", self.filter_backend, ("cpu", "auto"))
@@ -341,6 +346,13 @@ class VideoConfig:
         _integer("video decode_prefetch", self.decode_prefetch, 0, 16)
         if not isinstance(self.pinned_frames, bool):
             raise ValueError("video pinned_frames must be a boolean")
+        if not isinstance(self.gpu_buffer_reuse, bool):
+            raise ValueError("video gpu_buffer_reuse must be a boolean")
+        if not isinstance(self.gpu_cleanup_graph, bool):
+            raise ValueError("video gpu_cleanup_graph must be a boolean")
+        _integer("video solver_halo", self.solver_halo, 32, 96)
+        _integer("video pipeline_depth", self.pipeline_depth, 0, 8)
+        _choice("video validation_mode", self.validation_mode, ("scan", "stream"))
         _choice("video encoder", self.encoder, ("libx264", "h264_nvenc"))
         _integer("video nvenc_cq", self.nvenc_cq, 0, 51)
         _choice("video nvenc_preset", self.nvenc_preset,

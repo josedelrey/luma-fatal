@@ -101,8 +101,8 @@ def test_cuda_solver_reuses_graphs_across_grid_sizes(cuda_solver):
     cuda_solver(coarse, 16, 1.9)
     second = cuda_solver(full, 32, 1.9)
     np.testing.assert_array_equal(second, first)
-    assert ((67, 91), 32, 1.9, False) in cuda_solver.graphs
-    assert ((34, 46), 16, 1.9, False) in cuda_solver.graphs
+    assert ((67, 91), 32, 1.9, False, 96) in cuda_solver.graphs
+    assert ((34, 46), 16, 1.9, False, 96) in cuda_solver.graphs
 
 
 @pytest.mark.parametrize("variant", [1, 2])
@@ -309,11 +309,32 @@ def cuda_core(cuda_solver):
     return CudaCore()
 
 
+@pytest.mark.parametrize("kind", ["mixed", "zeros", "constant", "nan"])
+def test_fixed_size_normalization_preserves_zero_exclusion(cuda_core, kind):
+    values = np.array([-4, -2, 0, 0, 1, 3, 7, 12], np.float32).reshape(2, 4)
+    if kind == "zeros":
+        values[:] = 0
+    elif kind == "constant":
+        values[:] = 3
+    elif kind == "nan":
+        values[1, 3] = np.nan
+    with cuda_core.stream:
+        source = cuda_core.cp.asarray(values)
+        cuda_core.optimized = False
+        reference = cuda_core.normalize(source, NumericsConfig()).get(stream=cuda_core.stream)
+        cuda_core.optimized = True
+        actual = cuda_core.normalize(source, NumericsConfig()).get(stream=cuda_core.stream)
+        cuda_core.optimized = False
+    np.testing.assert_array_equal(actual.view(np.uint32), reference.view(np.uint32))
+
+
 @pytest.mark.parametrize("variant", [1, 2])
+@pytest.mark.parametrize("optimized", [False, True])
 @pytest.mark.parametrize("resize", [False, True])
 @pytest.mark.parametrize("treatment", ["none", "cleanup", "noise", "denoise", "multiscale"])
-def test_cuda_frame_pipeline_preserves_appearance_and_controls(cuda_core, variant, resize, treatment):
+def test_cuda_frame_pipeline_preserves_appearance_and_controls(cuda_core, variant, optimized, resize, treatment):
     from luma_fatal.cleanup import MultiscaleSourceCleanup
+    from luma_fatal.configuration import VideoConfig
 
     yy, xx = np.indices((137, 193))
     rgb = np.stack(((xx * 3) % 256, (yy * 4) % 256, (xx + yy) % 256), axis=-1).astype(np.uint8)
@@ -325,6 +346,8 @@ def test_cuda_frame_pipeline_preserves_appearance_and_controls(cuda_core, varian
         parameters=FilterParams(fade=23, output_gamma=1.2, tone_strength=70, highlight_compression=30,
                                 black_level=3, white_level=97, vibrance=25),
         numerics=NumericsConfig(shadow_softness=6, pyramid_min_size=8),
+        video=VideoConfig(gpu_buffer_reuse=optimized, gpu_cleanup_graph=optimized,
+                          solver_halo=64 if optimized else 96),
     )
 
     def source():
@@ -554,8 +577,12 @@ def test_cuda_denoising_matches_noise_estimation_and_band_shrinkage(cuda_core, c
     assert difference.max() <= 3
 
 
-def test_real_frame_failure_restores_nested_mask_history(cuda_core, monkeypatch):
+@pytest.mark.parametrize("optimized", [False, True])
+def test_real_frame_failure_restores_nested_mask_history(cuda_core, monkeypatch, optimized):
+    from dataclasses import replace
     config = Config(processing=ProcessingConfig(resize=False), numerics=NumericsConfig(shadow_softness=6))
+    config = replace(config, video=replace(config.video, gpu_buffer_reuse=optimized,
+                                          gpu_cleanup_graph=optimized))
     cpu_treatment = SourceDenoise(0.5, source_cleanup=SourceNoise(rms=0.2, cleanup=0.75))
     treatment = SourceDenoise(0.5, source_cleanup=SourceNoise(rms=0.2, cleanup=0.75))
     yy, xx = np.indices((137, 193))
@@ -582,9 +609,11 @@ def test_real_frame_failure_restores_nested_mask_history(cuda_core, monkeypatch)
 
 @pytest.mark.parametrize("shape", [(257, 259), (1080, 1920)])
 @pytest.mark.parametrize("relaxation", [0.5, 1.9, 1.999])
-def test_parallel_edge_dependency_halo_agrees_with_cpu(cuda_solver, shape, relaxation):
+@pytest.mark.parametrize("halo", [64, 96])
+def test_parallel_edge_dependency_halo_agrees_with_cpu(cuda_solver, shape, relaxation, halo):
     solver = gpu.CudaSolver()
     solver.parallel_edge = True
+    solver.edge_halo = halo
     rhs = np.random.default_rng(411).normal(0, 0.1, shape).astype(np.float32)
     rhs[0] = 0
     expected = core._sor(rhs, 80, relaxation)

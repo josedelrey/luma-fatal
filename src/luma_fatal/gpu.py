@@ -244,6 +244,8 @@ class CudaSolver:
             self.edge = module.get_function("right_edge")
             self.parallel_edge_kernel = module.get_function("parallel_edge")
             self.parallel_edge = False
+            self.edge_halo = 96
+            self.edge_kernels = {96: self.parallel_edge_kernel}
             self.shared_bytes = properties["sharedMemPerBlock"]
             self.stream = cp.cuda.Stream(non_blocking=True)
             self.key = None
@@ -259,7 +261,7 @@ class CudaSolver:
         cp = self.cp
         try:
             with cp.cuda.Device(self.device), self.stream:
-                key = (rhs.shape, iterations, relaxation, self.parallel_edge)
+                key = (rhs.shape, iterations, relaxation, self.parallel_edge, self.edge_halo)
                 if self.key != key:
                     self._prepare(key)
                 self.rhs.set(np.ascontiguousarray(rhs, dtype=np.float32), stream=self.stream)
@@ -274,7 +276,7 @@ class CudaSolver:
         The caller must enqueue preceding and following work on self.stream.
         The returned buffer is reused by the next solve.
         """
-        key = (rhs.shape, iterations, relaxation, self.parallel_edge)
+        key = (rhs.shape, iterations, relaxation, self.parallel_edge, self.edge_halo)
         if self.key != key:
             self._prepare(key)
         self.cp.copyto(self.rhs, rhs)
@@ -287,7 +289,7 @@ class CudaSolver:
             self.rhs, self.solution, self.graph = self.graphs[key]
             self.key = key
             return
-        shape, iterations, relaxation, parallel_edge = key
+        shape, iterations, relaxation, parallel_edge, halo = key
         height, width = shape
         if min(shape) < 2 or height * width > np.iinfo(np.int32).max:
             raise GPUUnavailable("CUDA solver requires a field of at least 2 by 2 within int32 indexing")
@@ -299,7 +301,12 @@ class CudaSolver:
         edge = self.edge
         edge_options = {}
         if parallel_edge and height * 3 * 4 <= self.shared_bytes:
-            edge = self.parallel_edge_kernel
+            if halo not in self.edge_kernels:
+                self.edge_kernels[halo] = cp.RawKernel(
+                    _SOURCE.replace("y-96", f"y-{halo}"), "parallel_edge",
+                    options=("--fmad=false",),
+                )
+            edge = self.edge_kernels[halo]
             edge_options = dict(shared_mem=height * 3 * 4)
         # Compile all kernels and initialize fill before stream capture.
         self.sweep(blocks, (256,), (*arguments, np.int32(1), *weights))
@@ -455,6 +462,7 @@ class AdaptiveFrameProcessor:
         self.key = None
         self.backend = "cpu"
         self.slow_calls = 0
+        self.output_buffer = None
         self.record = dict(
             requested_backend="auto", backend="cpu", scope="frame_pipeline", device=None, cupy_version=None,
             reason="filtering not used", cpu_frames=0, cuda_frames=0,
@@ -465,7 +473,7 @@ class AdaptiveFrameProcessor:
     def _cache_key(self, frame):
         sources = tuple(Path(__file__).with_name(name) for name in (
             "gpu.py", "gpu_core.py", "core.py", "numerics.py", "processing.py",
-            "pipeline.py", "cleanup.py", "denoise.py", "prenoise.py", "video.py",
+            "pipeline.py", "cleanup.py", "denoise.py", "prenoise.py", "video.py", "video_io.py",
         ))
         code = hashlib.sha256()
         for path in sources:
@@ -528,7 +536,8 @@ class AdaptiveFrameProcessor:
             snapshot = _treatment_snapshot(self.source_cleanup)
             try:
                 begin = time.perf_counter()
-                result = self.cuda(frame, self.config, self.source_cleanup)
+                options = {} if getattr(self, "output_buffer", None) is None else {"out": self.output_buffer}
+                result = self.cuda(frame, self.config, self.source_cleanup, **options)
                 elapsed = time.perf_counter() - begin
                 self.record["cuda_frames"] += 1
                 self.slow_calls = self.slow_calls + 1 if elapsed > self.record["cpu_seconds"] else 0
