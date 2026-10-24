@@ -89,6 +89,8 @@ frame comparisons, review the PNGs before video encoding.
 Each excerpt starts with fresh decoder and mask state and runs at working
 resolution, without final enlargement or the production adapter's full-stream
 preflight. Video mode requires FFmpeg and ffprobe.
+It uses the adapter's color defaults and encoder availability check, including
+CPU fallback. Reports record the resolved color and actual encoder.
 
 ## Background
 
