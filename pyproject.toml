@@ -28,9 +28,3 @@ dev = ["pytest>=8,<10"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/luma_fatal"]
-
-[tool.hatch.build.targets.sdist]
-include = ["/src/luma_fatal", "/tests", "/configs", "/docs", "/experiments", "/.github/workflows/ci.yml", "/scripts/check_presets.py", "/assets/lantern-garden-original.png", "/assets/lantern-garden-fattal-1.png", "/assets/lantern-garden-fattal-2.png", "/assets/tea-by-the-water-original.png", "/assets/tea-by-the-water-fattal-1.png", "/pyproject.toml", "/uv.lock", "/README.md", "/LICENSE"]

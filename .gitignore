@@ -13,11 +13,10 @@ __pycache__/
 .nox/
 .uv-cache/
 
-# Packaging artifacts
+# Generated files
 *.egg-info/
 .eggs/
 build/
-dist/
 
 # Coverage reports
 .coverage
