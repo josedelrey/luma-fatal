@@ -53,8 +53,8 @@ the logarithm, but cannot recover detail lost in an 8-bit source.
 
 Bilinear and bicubic reduction to working resolution use no antialias prefilter
 and truncate their results to RGB8. Bicubic sampling uses the scalar kernel with
-`a = -0.75` and clamps overshoot. These choices leave input-area fitting and
-enlargement unchanged.
+`a = -0.75` and clamps overshoot. Input-area fitting and enlargement use separate,
+fixed resamplers.
 
 Experimental controls skip their added operations when set to neutral values.
 Frozen references check numerical and encoding behavior for the tested cases.

@@ -112,7 +112,7 @@ with the preflight diagnostics, or `null` when no fallback occurred.
 
 Select `--encoder libx264` to use CPU encoding directly without probing the GPU.
 Runs without a configuration also default to CPU encoding. Failures after
-encoding starts still abort the run and publish no video or sidecar.
+encoding starts abort the run and publish no video or sidecar.
 
 ## GPU filtering
 
@@ -141,14 +141,13 @@ agreement. It selects CUDA when the measured speedup justifies setup cost.
 Small workloads use the CPU when GPU setup would take too long to recover.
 First use includes kernel compilation, so startup takes longer.
 
-Every bundled preset has a `-fast.yaml` copy for longer videos. These copies keep
-80 solver iterations and the original preset's resolution settings. They reuse
+Every bundled preset has a `-fast.yaml` copy for longer videos. Fast presets reuse
 buffers and calibration records, overlap video I/O, and validate compatible
 inputs during decoding. Inputs with differing nominal and average frame rates
 or unsupported pixel formats retain the separate validation pass. Both policies
 validate source metadata before publishing output.
 
-Cached calibration still measures CPU/GPU processing and checks the first frame
+Cached calibration measures CPU/GPU processing and checks the first frame
 for visual agreement. Device, driver, configuration, geometry, or implementation
 changes invalidate the cache. GPU failures or sustained slow processing switch
 to the CPU, preserving source cleanup history.
@@ -195,9 +194,9 @@ processing takes more time and memory.
 Deblocking and debanding operate on planar YUV. RGB sources are converted to YUV
 first when these treatments are enabled.
 
-All presets leave adaptive denoising disabled by default, including the compressed
-multiscale, noise, and fBm variations. Enable it with `--denoise 0.5` for a lighter
-blend or `--denoise 1` for full strength. Denoising suppresses fine and correlated
+All presets leave adaptive denoising disabled by default. Enable it with
+`--denoise 0.5` for a lighter blend or `--denoise 1` for full strength.
+Denoising suppresses fine and correlated
 grain in floating-point RGB/luminance before cleanup and any intentional source
 noise. Stronger source detail receives less smoothing. Very fine texture may
 soften. Use `--denoise 0` to bypass it. Each frame is denoised independently,

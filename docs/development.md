@@ -35,10 +35,9 @@ LUMA_FATAL_REQUIRE_GPU_TESTS=1 uv run --extra gpu python -m pytest -q tests/test
 
 Set the environment variable with your shell's syntax on Windows. GPU tests
 cover odd/even geometry, reference boundary behavior, both filter variants,
-resizing, source cleanup, noise, and denoising. CPU fixture expectations remain
-unchanged. CUDA graph/kernel initialization occurs on the first eligible frame. Whole-frame
-tests also compare cleanup, resizing, effect controls, noise and denoising with
-the reference route. Controlled failures verify history restoration on fallback.
+resizing, source cleanup, effect controls, noise, and denoising against the CPU
+reference. CUDA graphs and kernels initialize on the first eligible frame.
+Controlled failures verify cleanup history restoration on fallback.
 
 Regression tests use bundled [fixtures](../tests/fixtures/) or deterministically
 generated inputs. They cover scalar float32 bit patterns, filter outputs,

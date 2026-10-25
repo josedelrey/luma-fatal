@@ -74,8 +74,7 @@ For optional NVIDIA GPU filtering, install with `uv sync --locked --extra gpu`.
 Bundled presets automatically select CUDA frame processing when its measured speedup
 justifies setup cost, with CPU fallback. NVENC encoding is selected separately.
 Each YAML preset also has a `-fast.yaml` copy that reuses buffers, overlaps video
-I/O, and validates compatible sources during decoding. These copies retain
-80 solver iterations.
+I/O, and validates compatible sources during decoding.
 See the [video guide](docs/video.md) for processing options and encoding settings.
 
 ## Documentation
@@ -84,7 +83,7 @@ See the [video guide](docs/video.md) for processing options and encoding setting
 - [Python API](docs/python-api.md): images, arrays, and decoded frame streams.
 - [Method](docs/method.md): numerical behavior, color handling, and scope.
 - [Experiments](docs/experiments.md): source cleanup and pre-filter noise studies.
-- [Development](docs/development.md): tests, regression checks, and comparison builds.
+- [Development](docs/development.md): tests, regression checks, and image comparisons.
 
 ## Tests
 
