@@ -72,7 +72,7 @@ luma-fatal apply assets/lantern-garden-original.png outputs/readme-comparison-ne
 
 This command applies both reference variants with shadow softness 6 and saves
 `fattal1.png`, `fattal2.png`, and their `.meta.json` run records. The source and
-published results are 1122×1402 PNGs.
+published results are 880×1100 PNGs.
 
 Regenerate the image in the CLI example:
 
@@ -81,7 +81,7 @@ luma-fatal apply assets/tea-by-the-water-original.png outputs/readme-tea-new.png
   --config configs/fattal-1.yaml --filter fattal1 --shadow-softness 6 --output-format png
 ```
 
-Its source and filtered result are 1448×1086 PNGs.
+Its source and filtered result are 1080×810 PNGs.
 
 README image sources and filtered results are kept in `assets/`. Use the ignored
 `local_inputs/` directory for experimental inputs and `outputs/` for generated artifacts.
